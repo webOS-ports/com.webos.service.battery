@@ -1,0 +1,11 @@
+{
+    "powerd.management": [
+        "com.webos.service.battery/com/palm/power/battchargingStatusQuery",
+        "com.webos.service.battery/com/palm/power/batterySaverOnOff",
+        "com.webos.service.battery/com/palm/power/batteryStatusQuery",
+        "com.webos.service.battery/com/palm/power/chargerStatusQuery",
+        "com.webos.service.battery/com/palm/power/getFakeBatteryMode",
+        "com.webos.service.battery/com/palm/power/identify",
+        "com.webos.service.battery/com/palm/power/setFakeBatteryMode",
+    ]
+}

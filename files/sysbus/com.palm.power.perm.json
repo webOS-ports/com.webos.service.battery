@@ -1,9 +1,0 @@
-{
-    "com.palm.power": [
-        "activity.operation",
-        "powerd.management",
-        "signals.all",
-        "sleep.internal",
-        "sleep.management"
-    ]
-}

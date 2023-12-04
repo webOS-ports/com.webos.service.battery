@@ -17,12 +17,12 @@
 # LICENSE@@@
 
 #
-# powerd/CMakeLists.txt
+# batteryd/CMakeLists.txt
 #
 
 cmake_minimum_required(VERSION 2.8.7)
 
-project(powerd C)
+project(batteryd C)
 
 include(webOS/webOS)
 webos_modules_init(1 0 0 QUALIFIER RC3)
@@ -51,9 +51,9 @@ webos_add_compiler_flags(ALL -Wall)
 
 webos_add_linker_options(ALL --no-undefined)
 
-include_directories(include/internal include/public/powerd)
+include_directories(include/internal include/public/batteryd)
 
-add_subdirectory(libpowerd)
-add_subdirectory(powerd)
+add_subdirectory(libbatteryd)
+add_subdirectory(batteryd)
 
 webos_build_system_bus_files()

@@ -1,0 +1,9 @@
+{
+    "com.webos.service.battery": [
+        "activity.operation",
+        "powerd.management",
+        "signals.all",
+        "sleep.internal",
+        "sleep.management"
+    ]
+}

@@ -1,0 +1,13 @@
+{
+    "exeName":"@WEBOS_INSTALL_SBINDIR@/batteryd",
+    "trustLevel": "oem",
+    "type": "regular",
+    "allowedNames": ["com.webos.service.battery",""],
+    "permissions": [
+        {
+            "service":"com.webos.service.battery",
+            "inbound":["*"],
+            "outbound":["*"]
+        }
+    ]
+}

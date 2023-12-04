@@ -1,4 +1,4 @@
-powerd
+batteryd
 ======
 
 Summary
@@ -7,14 +7,14 @@ Open webOS component to manage charging and battery monitoring
 
 Description
 -----------
-Powerd is one of the primary daemons that is started when webOS boots. It is responsible for monitoring battery parameters like temperature, current, voltage and other inputs, and making decisions about battery charging. It interfaces with the underlying hardware using the Nyx client library, talking to the battery and charger modules for the platform. At the same time it exposes the battery and charging information to the upper layers through the Luna Service Bus. Powerd also has the capability to run the necessary CTIA checks for temperature limits on the platform. 
+batteryd is one of the primary daemons that is started when webOS boots. It is responsible for monitoring battery parameters like temperature, current, voltage and other inputs, and making decisions about battery charging. It interfaces with the underlying hardware using the Nyx client library, talking to the battery and charger modules for the platform. At the same time it exposes the battery and charging information to the upper layers through the Luna Service Bus. batteryd also has the capability to run the necessary CTIA checks for temperature limits on the platform. 
 
 How to Build on Linux
 =====================
 
 ## Dependencies
 
-Below are the tools and libraries (and their minimum versions) required to build powerd:
+Below are the tools and libraries (and their minimum versions) required to build batteryd:
 
 * cmake (version required by openwebos/cmake-modules-webos)
 * gcc 4.6.3
