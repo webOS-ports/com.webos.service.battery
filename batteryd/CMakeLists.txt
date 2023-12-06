@@ -33,4 +33,4 @@ target_link_libraries(batteryd ${GLIB2_LDFLAGS} ${LUNASERVICE2_LDFLAGS} ${JSON_L
 webos_build_daemon()
 webos_build_system_bus_files()
 
-install(FILES ../files/conf/batteryd.conf DESTINATION ${WEBOS_INSTALL_DEFAULTCONFDIR})
+install(FILES ../files/conf/com.webos.service.battery.conf DESTINATION ${WEBOS_INSTALL_DEFAULTCONFDIR})

@@ -105,13 +105,13 @@ static const BatteryStateNode kStateMachine[] = {
 };
 
 /* @brief when bad samples > threshold, mark battery as removed. */
-#define BAD_SAMPLES_THRESHOLD	3
+#define BAD_SAMPLES_THRESHOLD    3
 
 static BatteryStateNode state_node;
 
 extern struct battery_charge battery_params;
 
-#define MAX_DISCHARGE_COUNT	25
+#define MAX_DISCHARGE_COUNT    25
 
 static int discharge_count = 0;
 
@@ -277,7 +277,7 @@ static BatteryState StateInserted(void)
         return kBatteryAuthentic;
     }
     else {
-    	BATTERYDLOG(LOG_CRIT,"Battery authentication failure");
+        BATTERYDLOG(LOG_CRIT,"Battery authentication failure");
         return kBatteryNotAuthentic;
     }
 }
@@ -294,15 +294,15 @@ static BatteryState StateAuthenticOrNot(void)
 
     if(ChargerIsCharging() && battery.current <= 0 )
     {
-    	BATTERYDLOG(LOG_INFO,"%d: BATTERY DISCHARGING ....",discharge_count);
-    	discharge_count++;
+        BATTERYDLOG(LOG_INFO,"%d: BATTERY DISCHARGING ....",discharge_count);
+        discharge_count++;
     }
     else
-    	discharge_count = 0;
+        discharge_count = 0;
 
     if(discharge_count == MAX_DISCHARGE_COUNT)
     {
-    	BATTERYDLOG(LOG_CRIT,"Battery discharging while on charger");
+        BATTERYDLOG(LOG_CRIT,"Battery discharging while on charger");
         discharge_count = 0;
     }
 
@@ -312,7 +312,7 @@ static BatteryState StateAuthenticOrNot(void)
     }
 
     if(sample_is_new(&battery))
-    	sendBatteryStatus();
+        sendBatteryStatus();
 
     return kBatteryLast;
 }
@@ -326,7 +326,7 @@ static BatteryState StateNotAuthentic(void)
         return kBatteryAuthentic;
     }
     else
-    	BATTERYDLOG(LOG_CRIT,"Battery authentication failure");
+        BATTERYDLOG(LOG_CRIT,"Battery authentication failure");
 
     return StateAuthenticOrNot();
 }
@@ -336,7 +336,7 @@ static BatteryState StateNotAuthentic(void)
  */
 static BatteryState StateAuthentic(void)
 {
-	return StateAuthenticOrNot();
+    return StateAuthenticOrNot();
 }
 
 int batterypoll_init(void)

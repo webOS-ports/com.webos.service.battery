@@ -148,9 +148,9 @@ timesaver_save()
     int ret = rename(time_db_tmp,time_db);
     if (ret)
     {
-    	g_warning("%s : Unable to rename %s to %s",__FUNCTION__,time_db_tmp,time_db);
+        g_warning("%s : Unable to rename %s to %s",__FUNCTION__,time_db_tmp,time_db);
     }
-	unlink(time_db_tmp);
+    unlink(time_db_tmp);
 
 cleanup:
     return;

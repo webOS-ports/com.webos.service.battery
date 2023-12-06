@@ -29,19 +29,19 @@
 
 typedef struct chargeConfig
 {
-	bool debug;
+    bool debug;
 
-	bool skip_battery_check;
-	bool disable_overcharge_check;
-	bool fake_battery;
-	bool disable_charging;
-	bool skip_battery_authentication;
+    bool skip_battery_check;
+    bool disable_overcharge_check;
+    bool fake_battery;
+    bool disable_charging;
+    bool skip_battery_authentication;
 
     const char *preference_dir;
 
-	int fasthalt;
-	int maxtemp;
-	int temprate;
+    int fasthalt;
+    int maxtemp;
+    int temprate;
 }chargeConfig_t;
 
 extern chargeConfig_t gChargeConfig;

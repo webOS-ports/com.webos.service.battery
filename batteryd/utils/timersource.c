@@ -38,10 +38,10 @@
 
 struct _GTimerSource
 {
-    GSource  source;
-    GTimeVal expiration;   /* Should I just make this use Clock* API? */
-    guint    interval_ms;     /* In milisecs */
-    guint    granularity;
+    GSource    source;
+    GTimeVal   expiration;   /* Should I just make this use Clock* API? */
+    guint      interval_ms;     /* In milisecs */
+    guint      granularity;
 };
 
 static gboolean g_timer_source_prepare(GSource *source, gint *timeout_ms);

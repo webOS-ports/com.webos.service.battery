@@ -47,7 +47,7 @@
  */
 chargeConfig_t gChargeConfig =
 {
-	.debug = false,
+    .debug = false,
 
     .skip_battery_check = false,
     .fake_battery = false,

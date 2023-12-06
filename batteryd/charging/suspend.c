@@ -114,15 +114,15 @@ _ParseWakeupSources(int resumeType)
      */
     if (access(kBatteryCheckReasonSysfs, R_OK) == 0)
     {
-	retval = SysfsGetString(kBatteryCheckReasonSysfs,
-			batterycheck_reason, sizeof(batterycheck_reason));
-	if (retval)
-	{
-	    goto cleanup;
-	}
+    retval = SysfsGetString(kBatteryCheckReasonSysfs,
+            batterycheck_reason, sizeof(batterycheck_reason));
+    if (retval)
+    {
+        goto cleanup;
+    }
 
-	BatteryCheckReason(
-	    _ParseBatteryCheck(batterycheck_reason));
+    BatteryCheckReason(
+        _ParseBatteryCheck(batterycheck_reason));
     }
 
     retval = SysfsGetString(kChargerWakeupSourcesSysfs, wakeup_sources, sizeof(wakeup_sources));
@@ -151,54 +151,54 @@ done:
 bool resumeSignal(LSHandle *sh,
                    LSMessage *message, void *user_data)
 {
-	int resumetype;
+    int resumetype;
 
-	struct json_object *object = json_tokener_parse(LSMessageGetPayload(message));
-	if (!object) goto out;
+    struct json_object *object = json_tokener_parse(LSMessageGetPayload(message));
+    if (!object) goto out;
 
-	bool registration = json_object_get_boolean(
-						 json_object_object_get(object, "returnValue"));
-	if(registration)
-		goto out;
+    bool registration = json_object_get_boolean(
+                         json_object_object_get(object, "returnValue"));
+    if(registration)
+        goto out;
 
-	resumetype = json_object_get_boolean(json_object_object_get(object, "resumetype"));
+    resumetype = json_object_get_boolean(json_object_object_get(object, "resumetype"));
 
-	if(resumetype <= kResumeTypeNonIdle)
-	{
-		battery_set_wakeup_percentage(false,false);
-		_ParseWakeupSources(resumetype);
-	}
+    if(resumetype <= kResumeTypeNonIdle)
+    {
+        battery_set_wakeup_percentage(false,false);
+        _ParseWakeupSources(resumetype);
+    }
 out:
-	if (object) json_object_put(object);
+    if (object) json_object_put(object);
 
-	return true;
+    return true;
 }
 
 bool suspendedSignal(LSHandle *sh,
                    LSMessage *message, void *user_data)
 {
-	struct json_object *object = json_tokener_parse(LSMessageGetPayload(message));
-	if (!object) goto out;
+    struct json_object *object = json_tokener_parse(LSMessageGetPayload(message));
+    if (!object) goto out;
 
-	bool registration = json_object_get_boolean(
-						 json_object_object_get(object, "returnValue"));
-	if(registration)
-		goto out;
+    bool registration = json_object_get_boolean(
+                         json_object_object_get(object, "returnValue"));
+    if(registration)
+        goto out;
 
-	BATTERYDLOG(LOG_INFO,"Received Suspended signal");
-	battery_set_wakeup_percentage(false,true);
+    BATTERYDLOG(LOG_INFO,"Received Suspended signal");
+    battery_set_wakeup_percentage(false,true);
 
 out:
-	if (object) json_object_put(object);
+    if (object) json_object_put(object);
 
-	return true;
+    return true;
 }
 
 
 static int
 SuspendInit(void)
 {
-	bool retVal;
+    bool retVal;
     LSError lserror;
     LSErrorInit(&lserror);
 
@@ -212,16 +212,16 @@ SuspendInit(void)
     if (!retVal) goto ls_error;
 
     retVal = LSCall(GetLunaServiceHandle(),
-		  "luna://com.palm.lunabus/signal/addmatch",
-			  "{\"category\":\"/com/palm/power\","
-			   "\"method\":\"suspended\"}",
-			   suspendedSignal,
-			   NULL, NULL, &lserror);
+          "luna://com.palm.lunabus/signal/addmatch",
+              "{\"category\":\"/com/palm/power\","
+               "\"method\":\"suspended\"}",
+               suspendedSignal,
+               NULL, NULL, &lserror);
 
     if (!retVal) goto ls_error;
 
 ls_error:
-	LSErrorFree(&lserror);
+    LSErrorFree(&lserror);
     return 0;
 }
 

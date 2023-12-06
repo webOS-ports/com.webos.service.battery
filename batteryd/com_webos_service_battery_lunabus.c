@@ -18,7 +18,7 @@
 
 
 /**
- * @file com_palm_power_lunabus.c
+ * @file com_webos_service_battery_lunabus.c
  *
  * @brief Register lunabus methods and signals for batteryd.
  */
@@ -35,47 +35,16 @@ DECLARE_LSMETHOD(identifyCallback);
 DECLARE_LSMETHOD(batteryStatusQuery);
 DECLARE_LSMETHOD(chargerStatusQuery);
 
-DECLARE_LSMETHOD(suspendRequestRegister);
-DECLARE_LSMETHOD(suspendRequestAck);
-
-DECLARE_LSMETHOD(prepareSuspendRegister);
-DECLARE_LSMETHOD(prepareSuspendAck);
-
-DECLARE_LSMETHOD(forceSuspendCallback);
-
-DECLARE_LSMETHOD(TESTSuspendCallback);
-
-DECLARE_LSMETHOD(activityStartCallback);
-DECLARE_LSMETHOD(activityEndCallback);
-
-DECLARE_LSMETHOD(visualLedSuspendCallback);
-
 DECLARE_LSMETHOD(TESTChargeStateFault);
 DECLARE_LSMETHOD(TESTChargeStateShutdown);
 
-LSMethod com_palm_power_methods[] = {
-    { "activityStart", activityStartCallback },
-    { "activityEnd", activityEndCallback },
-
+LSMethod com_webos_service_battery_methods[] = {
     { "batteryStatusQuery", batteryStatusQuery },
     { "chargerStatusQuery", chargerStatusQuery },
-
-    /* suspend methods*/
-
-    { "suspendRequestRegister", suspendRequestRegister },
-    { "prepareSuspendRegister", prepareSuspendRegister },
-    { "suspendRequestAck", suspendRequestAck },
-    { "prepareSuspendAck", prepareSuspendAck },
-    { "forceSuspend", forceSuspendCallback },
-    { "identify", identifyCallback },
-
-    { "visualLedSuspend", visualLedSuspendCallback },
-    { "TESTSuspend", TESTSuspendCallback },
-
     { },
 };
 
-LSSignal com_palm_power_signals[] = {
+LSSignal com_webos_service_battery_signals[] = {
     { "batteryStatus" },
     { "batteryStatusQuery" },
     { "chargerStatus" },
@@ -83,24 +52,18 @@ LSSignal com_palm_power_signals[] = {
 
     { "chargerConnected" },
     { "USBDockStatus" },
-    /* Suspend signals */
-
-    { "suspendRequest" },
-    { "prepareSuspend" },
-    { "suspended" },
-    { "resume" },
-
+    
     { },
 };
 
 static int
-com_palm_power_lunabus_init(void)
+com_webos_service_battery_lunabus_init(void)
 {
     LSError lserror;
     LSErrorInit(&lserror);
 
     if (!LSRegisterCategory(GetLunaServiceHandle(), "/com/palm/power",
-        com_palm_power_methods, com_palm_power_signals,
+        com_webos_service_battery_methods, com_webos_service_battery_signals,
         NULL, &lserror))
     {
         goto error;
@@ -113,4 +76,4 @@ error:
     return -1;
 }
 
-INIT_FUNC(INIT_FUNC_END, com_palm_power_lunabus_init);
+INIT_FUNC(INIT_FUNC_END, com_webos_service_battery_lunabus_init);

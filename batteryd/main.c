@@ -88,7 +88,7 @@ main(int argc, char **argv)
 
     GError *error = NULL;
     GOptionContext *ctx;
-    ctx = g_option_context_new(" - power daemon");
+    ctx = g_option_context_new(" - battery daemon");
     g_option_context_add_main_entries(ctx, entries, NULL);
     if (!g_option_context_parse(ctx, &argc, &argv, &error)) {
         g_critical("option parsing failed: %s", error->message);
@@ -111,7 +111,7 @@ main(int argc, char **argv)
     signal(SIGTERM, term_handler);
     signal(SIGINT, term_handler);
 
-    if (!g_thread_supported ()) g_thread_init (NULL);
+    /*if (!g_thread_supported ()) g_thread_init ();*/
 
     mainloop = g_main_loop_new(NULL, FALSE);
 
@@ -122,7 +122,7 @@ main(int argc, char **argv)
     LSError lserror;
     LSErrorInit(&lserror);
 
-    retVal = LSRegister("com.palm.power", &private_sh, &lserror);
+    retVal = LSRegister("com.webos.service.battery", &private_sh, &lserror);
     if (!retVal)
     {
         goto ls_error;

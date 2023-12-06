@@ -629,7 +629,7 @@ void
 BatteryCheckReason(int batterycheck)
 {
     g_idle_add((GSourceFunc)_battery_check_reason_helper,
-                (gpointer)batterycheck);
+    (gpointer)batterycheck);
 }
 
 /**
