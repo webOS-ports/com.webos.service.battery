@@ -62,12 +62,22 @@ com_webos_service_battery_lunabus_init(void)
     LSError lserror;
     LSErrorInit(&lserror);
 
+    // Register with /com/palm/power for legacy compatibility
     if (!LSRegisterCategory(GetLunaServiceHandle(), "/com/palm/power",
         com_webos_service_battery_methods, com_webos_service_battery_signals,
         NULL, &lserror))
     {
         goto error;
     }
+
+    // Register without /com/palm/power prefix so sleepd from OSE will be happy
+    if (!LSRegisterCategory(GetLunaServiceHandle(), "/",
+        com_webos_service_battery_methods, com_webos_service_battery_signals,
+        NULL, &lserror))
+    {
+        goto error;
+    }
+
     return 0;
 
 error:

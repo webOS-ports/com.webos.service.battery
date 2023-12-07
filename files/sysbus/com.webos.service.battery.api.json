@@ -6,6 +6,13 @@
         "com.webos.service.battery/com/palm/power/chargerStatusQuery",
         "com.webos.service.battery/com/palm/power/getFakeBatteryMode",
         "com.webos.service.battery/com/palm/power/identify",
-        "com.webos.service.battery/com/palm/power/setFakeBatteryMode"
+        "com.webos.service.battery/com/palm/power/setFakeBatteryMode",
+        "com.webos.service.battery/battchargingStatusQuery",
+        "com.webos.service.battery/batterySaverOnOff",
+        "com.webos.service.battery/batteryStatusQuery",
+        "com.webos.service.battery/chargerStatusQuery",
+        "com.webos.service.battery/getFakeBatteryMode",
+        "com.webos.service.battery/identify",
+        "com.webos.service.battery/setFakeBatteryMode"
     ]
 }
