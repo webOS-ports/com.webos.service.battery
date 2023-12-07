@@ -1,9 +1,9 @@
-batteryd
+com.webos.service.battery (batteryd)
 ======
 
 Summary
 -------
-Open webOS component to manage charging and battery monitoring
+webOS component to manage charging and battery monitoring
 
 Description
 -----------
