@@ -341,7 +341,7 @@ void MachineShutdown(const char *reason)
 	LSErrorInit(&lserror);
 
 	bool retVal = LSCallOneReply(GetLunaServiceHandle(),
-			"luna://com.palm.power/shutdown/machineOff",
+			"luna://com.palm.sleep/shutdown/machineOff",
 			payload, NULL, NULL, NULL, &lserror);
 	g_free(payload);
 

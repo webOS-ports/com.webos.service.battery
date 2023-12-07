@@ -224,7 +224,7 @@ void machineShutdown(void)
     BATTERYDLOG(LOG_DEBUG,"%s: Sending payload : %s",__func__,payload);
 
     bool retVal = LSSignalSend(GetLunaServiceHandle(),
-            "luna://com.palm.power/shutdown/machineOff",
+            "luna://com.palm.sleep/shutdown/machineOff",
             payload, &lserror);
     g_free(payload);
 
@@ -275,7 +275,7 @@ void sendBatteryStatus(void)
     LSError lserror;
     LSErrorInit(&lserror);
     bool retVal = LSSignalSend(GetLunaServiceHandle(),
-        "luna://com.palm.batteryd/com/palm/power/batteryStatus",
+        "luna://com.webos.service.battery/com/palm/power/batteryStatus",
         payload, &lserror);
     if (!retVal)
     {

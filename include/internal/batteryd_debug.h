@@ -36,7 +36,7 @@
 // TODO use common error codes
 #define FATAL_ERROR -1
 #define ERROR       1
-#define POWERD_ERROR_TIMEOUT 355
+#define BATTERYD_ERROR_TIMEOUT 355
 
 /* Set the current log level */
 void SetLogLevel(GLogLevelFlags newLogLevel);

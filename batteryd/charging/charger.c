@@ -191,7 +191,7 @@ void sendChargerStatus(bool bOnlyIfChanged)
         BATTERYDLOG(LOG_DEBUG,"%s: Sending payload : %s",__func__,payload);
 
         bool retVal = LSSignalSend(GetLunaServiceHandle(),
-                "luna://com.palm.power/com/palm/power/chargerConnected",
+                "luna://com.webos.service.battery/com/palm/power/chargerConnected",
                 payload, &lserror);
         g_free(payload);
 
