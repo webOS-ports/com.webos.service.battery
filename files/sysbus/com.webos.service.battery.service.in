@@ -18,6 +18,6 @@
 
 
 [D-BUS Service]
-Name=com.webos.service.batttery
+Name=com.webos.service.battery
 Exec=@WEBOS_INSTALL_SBINDIR@/batteryd
 Type=static
