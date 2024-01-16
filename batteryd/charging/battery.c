@@ -224,7 +224,7 @@ void machineShutdown(void)
     BATTERYDLOG(LOG_DEBUG,"%s: Sending payload : %s",__func__,payload);
 
     bool retVal = LSSignalSend(GetLunaServiceHandle(),
-            "luna://com.palm.sleep/shutdown/machineOff",
+            "luna://com.webos.service.sleep/shutdown/machineOff",
             payload, &lserror);
     g_free(payload);
 
