@@ -1,5 +1,5 @@
 {
-    "powerd.management": [
+    "batteryd.management": [
         "com.webos.service.battery/com/palm/power/battchargingStatusQuery",
         "com.webos.service.battery/com/palm/power/batterySaverOnOff",
         "com.webos.service.battery/com/palm/power/batteryStatusQuery",
