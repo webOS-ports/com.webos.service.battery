@@ -1,9 +1,7 @@
 {
     "com.webos.service.battery": [
         "activity.operation",
-        "powerd.management",
-        "signals.all",
-        "sleep.internal",
+        "servicebus.signal",
         "sleep.management"
     ]
 }
