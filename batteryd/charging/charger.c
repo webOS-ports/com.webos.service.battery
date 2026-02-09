@@ -135,7 +135,7 @@ void sendChargerStatus(bool bOnlyIfChanged)
     {
         BATTERYDLOG(LOG_ERR,"%s: nyx_charger_query_charger_status returned with error : %d",__func__,err);
     }
-    BATTERYDLOG(LOG_DEBUG,"In %s connected : %d:%d, powered : %d:%d",__func__,currStatus.connected,status.connected,currStatus.powered,status.powered);
+    g_debug("sendChargerStatus: connected=%d->%d, powered=%d->%d",currStatus.connected,status.connected,currStatus.powered,status.powered);
 
     if(!bOnlyIfChanged || 
        (currStatus.connected != status.connected || currStatus.powered != status.powered))

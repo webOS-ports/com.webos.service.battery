@@ -92,10 +92,13 @@ main(int argc, char **argv)
     g_option_context_add_main_entries(ctx, entries, NULL);
     if (!g_option_context_parse(ctx, &argc, &argv, &error)) {
         g_critical("option parsing failed: %s", error->message);
+        if (error)
+            g_error_free(error);
+        g_option_context_free(ctx);
         exit(1);
     }
 
-    g_option_context_free (ctx);
+    g_option_context_free(ctx);
 
     // FIXME integrate this into TheOneInit()
     LOGInit();
@@ -142,6 +145,9 @@ main(int argc, char **argv)
     g_main_loop_run(mainloop);
 
 end:
+    // Cleanup initialization hooks before freeing mainloop
+    TheOneCleanup();
+    
     g_main_loop_unref(mainloop);
 
     // save time before quitting...

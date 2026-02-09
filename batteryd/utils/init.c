@@ -130,7 +130,34 @@ GHookListPrint(gpointer key, gpointer value, gpointer data)
 void
 PrintHookLists(void)
 {
-    g_hash_table_foreach(namedInitFuncs, GHookListPrint, NULL);
+    if (namedInitFuncs)
+        g_hash_table_foreach(namedInitFuncs, GHookListPrint, NULL);
+}
+
+/**
+ * Cleanup function to free all initialization hooks and the hash table.
+ * Call this at program shutdown to prevent memory leaks.
+ */
+static void
+_CleanupHookListValue(gpointer value, gpointer data)
+{
+    GNamedHookList *namedHookList = (GNamedHookList*)value;
+    if (namedHookList)
+    {
+        g_hook_list_clear((GHookList*)namedHookList);
+        free(namedHookList);
+    }
+}
+
+void
+TheOneCleanup(void)
+{
+    if (namedInitFuncs)
+    {
+        g_hash_table_foreach(namedInitFuncs, _CleanupHookListValue, NULL);
+        g_hash_table_destroy(namedInitFuncs);
+        namedInitFuncs = NULL;
+    }
 }
 
 /**
@@ -139,19 +166,10 @@ PrintHookLists(void)
 void
 TheOneInit(void)
 {
-#if 0
-    if (gPowerConfig.debug)
-    {
-        PrintHookLists();
-    }
-#endif
     /** Run common init funcs **/
     GHookList *commonInitFuncs = g_hash_table_lookup(namedInitFuncs, COMMON_INIT_NAME);
     if (commonInitFuncs)
     {
-        g_info("\n%s Running common Inits", __FUNCTION__);
+        g_info("Running initialization hooks");
         g_hook_list_invoke(commonInitFuncs, FALSE);
     }
-
-
-}

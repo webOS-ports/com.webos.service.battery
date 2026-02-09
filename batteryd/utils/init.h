@@ -22,6 +22,8 @@
 
 void TheOneInit(void);
 
+void TheOneCleanup(void);
+
 enum {
     INIT_FUNC_FIRST  = 0,
     INIT_FUNC_EARLY  = 10,
