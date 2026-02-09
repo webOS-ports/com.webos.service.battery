@@ -537,14 +537,14 @@ StateChargeComplete(nyx_charger_event_t event)
 {
 	TurnChargingOff("charge complete");
 
-	BATTERYDLOG(LOG_INFO,"In %s",__func__);
+	g_debug("StateChargeComplete: handling charge complete event");
     if (!ChargerIsConnected() || (event & NYX_CHARGER_DISCONNECTED))
     {
         return kChargeStateIdle;
     }
 
 	if(event & NYX_CHARGE_RESTART) {
-    	BATTERYDLOG(LOG_DEBUG," In %s , event %d:%d, returning state idle",__func__,event,NYX_CHARGE_RESTART);
+    g_debug("StateChargeComplete: charge restart detected, returning to idle");
 		return kChargeStateIdle;
     }
 

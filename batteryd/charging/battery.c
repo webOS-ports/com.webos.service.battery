@@ -97,7 +97,7 @@ void battery_set_wakeup_percentage(bool charging, bool suspend)
     if(!battDev)
         return;
 
-    BATTERYDLOG(LOG_DEBUG, "In %s\n",__FUNCTION__);
+    g_debug("battery_set_wakeup_percentage: calculating next wakeup point");
     battery_read(&batt);
     sendBatteryStatus();
 

@@ -47,7 +47,7 @@ ChangeGIOHelper(GIOChannel *source, GIOCondition condition, gpointer ctx)
     UEventChangeFunc func = (UEventChangeFunc)ctx;
 
     char buf[4096];
-    g_info("ChangeGIOHelper\n");
+    g_debug("ChangeGIOHelper: entering");
 
     memset(buf, 0x00, sizeof(buf));
     memset(&msg, 0x00, sizeof (struct msghdr));
@@ -58,7 +58,7 @@ ChangeGIOHelper(GIOChannel *source, GIOCondition condition, gpointer ctx)
     msg.msg_iov = &iov;
     msg.msg_iovlen = 1;
     nbytes = recvmsg(socket, &msg, 0);
-    g_info("ChangeGIOHelper: %d\n", nbytes);
+    g_debug("ChangeGIOHelper: received %d bytes", nbytes);
     if (nbytes < 0)
     {
         if (EINTR != errno)
@@ -74,8 +74,7 @@ ChangeGIOHelper(GIOChannel *source, GIOCondition condition, gpointer ctx)
         g_warning("Invalid message format for udev event: %s.\n", buf);
     }
 
-    //g_debug("Received uevent %s.\n", buf);
-    g_info("Received uevent %d:%s.\n", nbytes, buf);
+    g_debug("Received uevent (%d bytes): %s", nbytes, buf);
 
     if (strncmp(buf, "change", strlen("change")) == 0)
     {
@@ -103,7 +102,7 @@ UEventListen(const char *ueventPath, UEventChangeFunc func)
     socklen_t len;
     GIOChannel *udev_channel;
 
-    g_info("UEventListen\n");
+    g_debug("UEventListen: setting up listener on %s", ueventPath);
     memset(&addr, 0x00, sizeof(addr));
     addr.sun_family = AF_LOCAL;
 
