@@ -76,31 +76,31 @@ NamedInitFuncAdd(const char *name, InitFuncPriority priority, InitFunc func, con
         if (!namedInitFuncs)
         {
             g_error("%s: Out of memory on initialization.\n", __FUNCTION__);
-            /*
-             * Cleanup function to free all initialization hooks and the hash table.
-             * Call this at program shutdown to prevent memory leaks.
-             */
-            static void
-            _CleanupHookListValue(gpointer key, gpointer value, gpointer data)
-            {
-                GNamedHookList *namedHookList = (GNamedHookList*)value;
-                if (namedHookList)
-                {
-                    g_hook_list_clear((GHookList*)namedHookList);
-                    free(namedHookList);
-                }
-            }
+            abort();
+        }
+    }
 
-            void
-            TheOneCleanup(void)
-            {
-                if (namedInitFuncs)
-                {
-                    g_hash_table_foreach(namedInitFuncs, _CleanupHookListValue, NULL);
-                    g_hash_table_destroy(namedInitFuncs);
-                    namedInitFuncs = NULL;
-                }
-            }
+    if (g_hash_table_lookup(namedInitFuncs, (gconstpointer)name) == NULL)
+    {
+        GNamedHookList *namedHookList = malloc(sizeof (GNamedHookList));
+        if (!namedHookList)
+        {
+            g_error("%s: Out of memory on initialization.\n", __FUNCTION__);
+            abort();
+        }
+        g_hook_list_init((GHookList*)namedHookList, sizeof(GPrioritizedHook));
+
+        namedHookList->name = name;
+       
+        g_hash_table_insert(namedInitFuncs, (char*)name, namedHookList);
+    }
+
+    GHookList *hookList = (GHookList*)g_hash_table_lookup(namedInitFuncs, (gconstpointer)name);
+
+    GPrioritizedHook *hook = (GPrioritizedHook*)g_hook_alloc(hookList);
+
+    hook->base.data = func;
+    hook->base.func = HookInit;
     hook->priority  = priority;
     hook->func_name = func_name;
 
@@ -131,7 +131,10 @@ void
 PrintHookLists(void)
 {
     if (namedInitFuncs)
+    {
+        g_info("Initialization hooks:");
         g_hash_table_foreach(namedInitFuncs, GHookListPrint, NULL);
+    }
 }
 
 /**
@@ -173,5 +176,6 @@ TheOneInit(void)
         g_info("Running initialization hooks");
         g_hook_list_invoke(commonInitFuncs, FALSE);
     }
+
 
 }
