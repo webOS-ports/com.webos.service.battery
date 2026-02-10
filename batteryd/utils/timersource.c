@@ -32,6 +32,7 @@
  */
 
 #include <glib.h>
+#include <sys/time.h>
 
 #include "timersource.h"
 #include "clock.h"
@@ -39,7 +40,7 @@
 struct _GTimerSource
 {
     GSource    source;
-    GTimeVal   expiration;   /* Should I just make this use Clock* API? */
+    struct timeval   expiration;   /* Should I just make this use Clock* API? */
     guint      interval_ms;     /* In milisecs */
     guint      granularity;
 };
@@ -58,7 +59,7 @@ GSourceFuncs g_timer_source_funcs= {
 #define USECS_PER_SEC 1000000
 #define USECS_PER_MSEC 1000
 static void
-g_timer_set_expiration(GTimerSource *rsource, GTimeVal *now)
+g_timer_set_expiration(GTimerSource *rsource, struct timeval *now)
 {
     guint interval_secs = rsource->interval_ms / 1000;
     glong interval_usecs = (rsource->interval_ms - interval_secs * 1000) * 1000;
@@ -94,7 +95,7 @@ g_timer_set_expiration(GTimerSource *rsource, GTimeVal *now)
 }
 
 static void
-g_timer_get_current_time(GTimerSource *tsource, GTimeVal *now)
+g_timer_get_current_time(GTimerSource *tsource, struct timeval *now)
 {
     g_return_if_fail (now != NULL);
 
@@ -110,7 +111,7 @@ static gboolean
 g_timer_source_prepare(GSource    *source,
                      gint       *timeout_ms)
 {
-    GTimeVal now;
+    struct timeval now;
 
     GTimerSource *tsource = (GTimerSource*)source;
 
@@ -140,7 +141,7 @@ g_timer_source_prepare(GSource    *source,
 static gboolean
 g_timer_source_check(GSource *source)
 {
-    GTimeVal now;
+    struct timeval now;
     GTimerSource *tsource = (GTimerSource*)source;
 
     g_timer_get_current_time(tsource, &now);
@@ -165,7 +166,7 @@ g_timer_source_dispatch(GSource *source,
 
     if (callback(user_data))
     {
-        GTimeVal now;
+        struct timeval now;
         g_timer_get_current_time(tsource, &now);
         g_timer_set_expiration(tsource, &now);
         return TRUE;
@@ -194,7 +195,7 @@ g_timer_source_new(guint interval_ms, guint granularity_ms)
     source = g_source_new(&g_timer_source_funcs, sizeof(GTimerSource));
     tsource = (GTimerSource*)source;
 
-    GTimeVal now;
+    struct timeval now;
 
     tsource->interval_ms = interval_ms;
     tsource->granularity = granularity_ms;

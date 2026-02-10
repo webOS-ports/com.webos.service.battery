@@ -375,6 +375,7 @@ _BatterydClientIPCRun(void)
 
             ret = pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
             assert(ret == 0);
+            (void)ret;
 
             pthread_t tid;
             pthread_create(&tid, &attr, _BatterydIPCThread, NULL);
