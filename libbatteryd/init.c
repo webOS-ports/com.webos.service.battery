@@ -114,6 +114,7 @@ BatterydClientLock(BatterydHandle *handle)
 {
     int ret = pthread_mutex_lock(&sHandle.lock);
     assert(ret == 0);
+    (void)ret;
 }
 
 void
@@ -121,6 +122,7 @@ BatterydClientUnlock(BatterydHandle *handle)
 {
     int ret = pthread_mutex_unlock(&sHandle.lock);
     assert(ret == 0);
+    (void)ret;
 }
 
 void
