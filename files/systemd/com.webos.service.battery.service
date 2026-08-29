@@ -1,6 +1,12 @@
 [Unit]
 Description=Daemon to manage charging and battery monitoring
-After=activitymanager.service
+# nyx.target is the ordering point for everything that reads /etc/nyx.conf:
+# luneos-device-config generates that file at boot and binds it in place
+# Before=nyx.target. batteryd opens the nyx charger module at startup, and
+# without this ordering it raced the generator and read the shipped
+# placeholder - on sargo that meant the charger sysfs path fell back to nyx's
+# own walk, which picks the wrong supply, and USB charging was never detected.
+After=activitymanager.service nyx.target
 Requires=activitymanager.service
 
 [Service]
