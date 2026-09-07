@@ -166,21 +166,61 @@ static int getUiPercent(int percent)
 }
 
 
-bool batteryStatusQuery(LSHandle *sh,
-                   LSMessage *message, void *user_data)
+/**
+ * @brief Append the readings of one battery as a JSON object.
+ */
+static void appendBatteryObject(GString *buffer, const char *name,
+                                const char *role, bool primary,
+                                const nyx_battery_status_t *status)
+{
+    g_string_append_printf(buffer,
+        "{\"name\":\"%s\",\"role\":\"%s\",\"primary\":%s,"
+        "\"present\":%s,\"charging\":%s,"
+        "\"percent\":%d,\"percent_ui\":%d,"
+        "\"temperature_C\":%d,\"current_mA\":%d,\"voltage_mV\":%d,"
+        "\"capacity_mAh\":%f}",
+        name, role,
+        primary ? "true" : "false",
+        status->present ? "true" : "false",
+        status->charging ? "true" : "false",
+        status->percentage,
+        getUiPercent(status->percentage),
+        status->temperature,
+        status->current,
+        status->voltage,
+        status->capacity);
+}
+
+/**
+ * @brief Build the batteryStatus payload.
+ *
+ * The top level describes the primary battery and is exactly what it always
+ * was, so every existing consumer keeps working. A device that has more than
+ * one battery - a PinePhone (Pro) docked in its keyboard - additionally gets a
+ * "batteries" array with one entry per battery, primary first. Devices with a
+ * single battery, and modules built against a nyx that predates
+ * nyx_battery_query_battery_count(), emit no array at all rather than a
+ * one-element one restating the top level.
+ *
+ * Caller frees.
+ */
+static char *buildBatteryStatusPayload(void)
 {
     nyx_battery_status_t status;
-    if(!battDev)
-        return false;
+    int32_t count = 0;
+    GString *buffer;
+
+    if (!battDev)
+        return NULL;
 
     nyx_error_t err = nyx_battery_query_battery_status(battDev,&status);
 
     if(err != NYX_ERROR_NONE)
     {
-        BATTERYDLOG(LOG_ERR,"%s: nyx_charger_query_battery_status returned with error : %d",__func__,err);
+        BATTERYDLOG(LOG_ERR,"%s: nyx_battery_query_battery_status returned with error : %d",__func__,err);
     }
-    int percent_ui = getUiPercent(status.percentage);
 
+    int percent_ui = getUiPercent(status.percentage);
 
     BATTERYDLOG(LOG_INFO,
             "(%fmAh, %d%%, %d%%_ui, %dC, %dmA, %dmV)\n",
@@ -189,10 +229,10 @@ bool batteryStatusQuery(LSHandle *sh,
             status.temperature,
             status.current, status.voltage);
 
-    GString *buffer = g_string_sized_new(500);
+    buffer = g_string_sized_new(500);
     g_string_append_printf(buffer,"{\"percent\":%d,\"percent_ui\":%d,"
                 "\"temperature_C\":%d,\"current_mA\":%d,\"voltage_mV\":%d,"
-                "\"capacity_mAh\":%f}",
+                "\"capacity_mAh\":%f",
         status.percentage,
         percent_ui,
         status.temperature,
@@ -200,7 +240,44 @@ bool batteryStatusQuery(LSHandle *sh,
         status.voltage,
         status.capacity);
 
-    char *payload = g_string_free(buffer, FALSE);
+    /* NYX_ERROR_NOT_IMPLEMENTED here just means "one battery, the one above". */
+    if (nyx_battery_query_battery_count(battDev, &count) == NYX_ERROR_NONE &&
+        count > 1)
+    {
+        int32_t i;
+        int32_t emitted = 0;
+
+        g_string_append(buffer, ",\"batteries\":[");
+
+        for (i = 0; i < count; i++)
+        {
+            nyx_battery_info_t info;
+
+            if (nyx_battery_query_battery_info(battDev, i, &info) != NYX_ERROR_NONE)
+                continue;
+
+            if (emitted++ > 0)
+                g_string_append_c(buffer, ',');
+
+            appendBatteryObject(buffer, info.name, info.role, info.primary,
+                                &info.status);
+        }
+
+        g_string_append_c(buffer, ']');
+    }
+
+    g_string_append_c(buffer, '}');
+
+    return g_string_free(buffer, FALSE);
+}
+
+bool batteryStatusQuery(LSHandle *sh,
+                   LSMessage *message, void *user_data)
+{
+    char *payload = buildBatteryStatusPayload();
+
+    if (!payload)
+        return false;
 
     BATTERYDLOG(LOG_DEBUG,"%s: Sending payload : %s",__func__,payload);
     LSError lserror;
@@ -237,39 +314,10 @@ void machineShutdown(void)
 
 void sendBatteryStatus(void)
 {
-    nyx_battery_status_t status;
-    if(!battDev)
+    char *payload = buildBatteryStatusPayload();
+
+    if (!payload)
         return;
-
-    nyx_error_t err = nyx_battery_query_battery_status(battDev,&status);
-
-    if(err != NYX_ERROR_NONE)
-    {
-        BATTERYDLOG(LOG_ERR,"%s: nyx_charger_query_battery_status returned with error : %d",__func__,err);
-    }
-
-    int percent_ui = getUiPercent(status.percentage);
-
-
-    BATTERYDLOG(LOG_INFO,
-            "(%fmAh, %d%%, %d%%_ui, %dC, %dmA, %dmV)\n",
-            status.capacity, status.percentage,
-            percent_ui,
-            status.temperature,
-            status.current, status.voltage);
-
-    GString *buffer = g_string_sized_new(500);
-    g_string_append_printf(buffer,"{\"percent\":%d,\"percent_ui\":%d,"
-                "\"temperature_C\":%d,\"current_mA\":%d,\"voltage_mV\":%d,"
-                "\"capacity_mAh\":%f}",
-        status.percentage,
-        percent_ui,
-        status.temperature,
-        status.current,
-        status.voltage,
-        status.capacity);
-
-    char *payload = g_string_free(buffer, FALSE);
 
     BATTERYDLOG(LOG_DEBUG,"%s: Sending payload : %s",__func__,payload);
     LSError lserror;
@@ -447,6 +495,34 @@ int BatteryInit(void)
     }
 
     nyx_battery_register_battery_status_callback(battDev,notifyBatteryStatus,NULL);
+
+    /*
+     * Say what we are working with. A device that turns out to have two
+     * batteries when it should have one, or a keyboard battery that never
+     * shows up, is otherwise only visible by reading the broadcast payload.
+     */
+    {
+        int32_t count = 0;
+
+        if (nyx_battery_query_battery_count(battDev, &count) == NYX_ERROR_NONE)
+        {
+            int32_t i;
+
+            BATTERYDLOG(LOG_INFO,"Batteryd: %d batter%s reported by nyx",
+                        count, (1 == count) ? "y" : "ies");
+
+            for (i = 0; i < count; i++)
+            {
+                nyx_battery_info_t info;
+
+                if (nyx_battery_query_battery_info(battDev, i, &info) == NYX_ERROR_NONE)
+                    BATTERYDLOG(LOG_INFO,"Batteryd:   [%d] %s (%s)%s%s",
+                                i, info.name, info.role,
+                                info.primary ? ", primary" : "",
+                                info.status.present ? "" : ", not present");
+            }
+        }
+    }
 
 out:
     if(iteraror)
