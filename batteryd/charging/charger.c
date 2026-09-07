@@ -106,10 +106,11 @@ chargerStatusQuery(LSHandle *sh,
     LSErrorInit(&lserror);
 
     char *payload = g_strdup_printf("{\"DockConnected\":%s,\"DockPower\":%s,\"DockSerialNo\":\"%s\","
-                "\"USBConnected\":%s,\"USBName\":\"%s\",\"Charging\":%s}",(status.connected & NYX_CHARGER_INDUCTIVE_CONNECTED) ? "true" : "false",
+                "\"USBConnected\":%s,\"USBName\":\"%s\",\"Charging\":%s,\"connected\":%s}",(status.connected & NYX_CHARGER_INDUCTIVE_CONNECTED) ? "true" : "false",
                 (status.powered & NYX_CHARGER_INDUCTIVE_POWERED) ? "true" :"false",(strlen(status.dock_serial_number)) ? status.dock_serial_number : "NULL",
                 (status.powered & NYX_CHARGER_USB_POWERED) ? "true" : "false",ChargerNameToString(status.connected),
-                (status.is_charging) ? "true":"false");
+                (status.is_charging) ? "true":"false",
+                (status.connected) ? "true":"false");
 
     BATTERYDLOG(LOG_DEBUG,"%s: Sending payload : %s",__func__,payload);
     bool retVal = LSMessageReply(sh, message, payload,NULL);
@@ -193,6 +194,13 @@ void sendChargerStatus(bool bOnlyIfChanged)
         bool retVal = LSSignalSend(GetLunaServiceHandle(),
                 "luna://com.webos.service.battery/com/palm/power/chargerConnected",
                 payload, &lserror);
+        /* sleepd subscribes to chargerConnected in the root category ("/"),
+         * not /com/palm/power, so also emit it there; otherwise sleepd never
+         * sees charger plug/unplug and suspend-thrashes while charging. */
+        LSError lserror_root; LSErrorInit(&lserror_root);
+        if (!LSSignalSend(GetLunaServiceHandle(),
+                "luna://com.webos.service.battery/chargerConnected",
+                payload, &lserror_root)) { LSErrorPrint(&lserror_root, stderr); LSErrorFree(&lserror_root); }
         g_free(payload);
 
         if (!retVal)
