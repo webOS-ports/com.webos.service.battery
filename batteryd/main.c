@@ -78,6 +78,7 @@ main(int argc, char **argv)
     gboolean fasthalt = FALSE;
     gint maxtemp = 0;
     gint temprate = 0;
+    gint critical_percent = -1;
 
     GOptionEntry entries[] = {
         {"debug", 'd', 0, G_OPTION_ARG_NONE, &debug, "turn debug logging on", NULL},
@@ -85,6 +86,7 @@ main(int argc, char **argv)
         {"maxtemp", 'M', 0, G_OPTION_ARG_INT, &maxtemp, "Set maximum temperature before shutdown (default 60)", NULL},
         {"temprate", 'T', 0, G_OPTION_ARG_INT, &temprate, "Expected maxiumum temperature slew rate (default 12)", NULL},
         {"fasthalt", 'F', 0, G_OPTION_ARG_NONE, &fasthalt, "On overtemp, shut down quickly not cleanly", NULL},
+        {"critical-percent", 'C', 0, G_OPTION_ARG_INT, &critical_percent, "Shut down at or below this battery percent, 0 to disable (default 2)", NULL},
         { NULL }
     };
 
@@ -123,6 +125,10 @@ main(int argc, char **argv)
     gChargeConfig.fasthalt     = fasthalt ? 1 : 0;
     gChargeConfig.maxtemp      = maxtemp;
     gChargeConfig.temprate     = temprate;
+
+    /* -1 means "not given"; 0 is a real value that disables the check */
+    if (critical_percent >= 0)
+        gChargeConfig.critical_percent = critical_percent;
    
     signal(SIGTERM, term_handler);
     signal(SIGINT, term_handler);

@@ -60,6 +60,9 @@ chargeConfig_t gChargeConfig =
     .fasthalt = 0, 
     .maxtemp = 0, // defaults in batterypoll.c
     .temprate = 0,
+
+    // percent at or below which we shut down; 0 disables
+    .critical_percent = 2,
             
 };
 
@@ -165,6 +168,8 @@ config_init(void)
                     gChargeConfig.disable_charging);
     CONFIG_GET_BOOL(config_file, "battery", "disable_overcharge_check",
                     gChargeConfig.disable_overcharge_check);
+    CONFIG_GET_INT(config_file, "battery", "critical_percent",
+                   gChargeConfig.critical_percent);
 
 
 end:

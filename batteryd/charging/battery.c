@@ -36,6 +36,7 @@
 #include "logging.h"
 #include "main.h"
 #include "battery.h"
+#include "charging_logic.h"
 #include "batteryd_config.h"
 #include "sysfs.h"
 
@@ -360,6 +361,10 @@ void sendBatteryStatus(void)
 void notifyBatteryStatus(nyx_device_handle_t handle, nyx_callback_status_t status, void* data)
 {
     sendBatteryStatus();
+
+    /* new readings are the only chance a discharging device gets to notice
+     * that it has run out */
+    BatteryLevelCheck();
 }
 
 bool batteryStatusQuerySignal(LSHandle *sh,

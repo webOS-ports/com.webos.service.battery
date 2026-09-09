@@ -42,6 +42,12 @@ typedef struct chargeConfig
     int fasthalt;
     int maxtemp;
     int temprate;
+
+    /**
+     * Shut down at or below this battery percentage while nothing is charging.
+     * 0 disables the check, leaving only the voltage and temperature triggers.
+     */
+    int critical_percent;
 }chargeConfig_t;
 
 extern chargeConfig_t gChargeConfig;

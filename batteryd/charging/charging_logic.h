@@ -49,6 +49,7 @@ enum {
 };
 
 void ChargingLogicUpdate(nyx_charger_event_t event);
+void BatteryLevelCheck(void);
 
 void ChargingLogicResetError(void);
 

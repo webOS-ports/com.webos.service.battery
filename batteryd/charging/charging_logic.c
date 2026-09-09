@@ -323,20 +323,33 @@ void MachineShutdown(const char *reason)
 }
 
 
-/**
- * @brief Check if the battery readings are critical. Shutdown the device if any of the following is true:
- * 1. Battery is absent.
- * 2. Battery voltage is below threshold (3.4V for most devices).
- * 3. Battery temperature is above max temperature allowed (60C for most devices).
- *
- * @param state
- *
- * @retval
- */
+/* consecutive readings at or below critical_percent before we act on it */
+#define CRITICAL_PERCENT_SAMPLES 3
 
+/**
+ * @brief Decide whether the battery can still support running.
+ *
+ * Two of the three critical triggers live elsewhere: voltage arrives as
+ * NYX_BATTERY_CRITICAL_VOLTAGE and temperature is checked against the CTIA
+ * parameters, both in handle_charger_event(). This one covers the battery being
+ * gone, and the state of charge.
+ *
+ * The percentage floor exists because the voltage trigger is the nyx module's
+ * to raise, and a module that does not raise it leaves nothing at all between a
+ * running device and a flat battery. It only applies while nothing is charging,
+ * and it wants CRITICAL_PERCENT_SAMPLES readings in a row: gauges lie on the
+ * way up from a cold boot - the rk818 on a PinePhone Pro ramps its reported
+ * charge one point per six seconds from a stale saved value - and one bad
+ * sample should not power the device off.
+ *
+ * @param state   latest readings, only read when state_valid
+ * @param state_valid  false when battery_read() could not answer
+ */
 static bool
-CheckCriticalLevels(nyx_battery_status_t *state)
+CheckCriticalLevels(const nyx_battery_status_t *state, bool state_valid)
 {
+    static int critical_samples = 0;
+
     /* Skip checks for people with fake batteries or bare-boards */
     if (gChargeConfig.skip_battery_check) return false;
 
@@ -346,7 +359,37 @@ CheckCriticalLevels(nyx_battery_status_t *state)
         return true;
     }
 
-    return false;
+    if (!state_valid || gChargeConfig.critical_percent <= 0 ||
+        ChargerIsCharging())
+    {
+        critical_samples = 0;
+        return false;
+    }
+
+    if (state->percentage > gChargeConfig.critical_percent)
+    {
+        critical_samples = 0;
+        return false;
+    }
+
+    critical_samples++;
+
+    BATTERYDLOG(LOG_WARNING,
+        "Battery at %d%%, at or below the critical level of %d%% (%d/%d)",
+        state->percentage, gChargeConfig.critical_percent,
+        critical_samples, CRITICAL_PERCENT_SAMPLES);
+
+    if (critical_samples < CRITICAL_PERCENT_SAMPLES)
+    {
+        return false;
+    }
+
+    critical_samples = 0;
+
+    BATTERYDLOG(LOG_CRIT, "Battery level is critical... shutting down");
+    _JumpToShutdownState("Critical battery levels");
+
+    return true;
 }
 
 /**
@@ -508,6 +551,37 @@ StateFault(nyx_charger_event_t event)
 /* Public */
 
 /**
+* @brief Re-check the battery against the critical thresholds.
+*
+* Called when nyx reports new readings. ChargingLogicUpdate() runs off charger
+* events - a plug, an unplug, a charge-complete - and a device sitting on
+* battery generates none of those, so without this the percentage floor below
+* would only ever be evaluated on a device that was being plugged in and out.
+*
+* Deliberately not ChargingLogicUpdate(): that re-runs the whole charge
+* decision, and calling TurnChargingON() on every reading would mean a nyx
+* enable-charging round trip every few seconds.
+*/
+void
+BatteryLevelCheck(void)
+{
+    nyx_battery_status_t state;
+    bool have_state;
+
+    if (gChargeConfig.skip_battery_check)
+    {
+        return;
+    }
+
+    have_state = battery_read(&state);
+
+    if (CheckCriticalLevels(&state, have_state))
+    {
+        ChargeStateIterate(NYX_NO_NEW_EVENT);
+    }
+}
+
+/**
 * @brief Called with every change in battery state & charger state.
 *
 * @param  state
@@ -516,6 +590,7 @@ void
 ChargingLogicUpdate(nyx_charger_event_t event)
 {
     nyx_battery_status_t state;
+    bool have_state;
 
     if (gChargeConfig.skip_battery_check) {
         return;
@@ -530,7 +605,14 @@ ChargingLogicUpdate(nyx_charger_event_t event)
 
     ChargeStateIterate(event);
 
-    if (CheckCriticalLevels(&state))
+    /*
+     * This read used to be taken at the top of the function and never looked
+     * at, because CheckCriticalLevels ignored the struct it was handed. It is
+     * taken here, after the state machine has run, and it is now used.
+     */
+    have_state = battery_read(&state);
+
+    if (CheckCriticalLevels(&state, have_state))
     {
         ChargeStateIterate(event);
     }
