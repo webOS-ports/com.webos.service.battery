@@ -46,7 +46,6 @@
 
 #define BATTERY_MAX_TEMPERATURE_C	60
 
-nyx_battery_ctia_t battery_ctia_params;
 
 
 static char *debug_state_description[kChargeStateLast+1] =

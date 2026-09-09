@@ -141,8 +141,14 @@ PrintHookLists(void)
  * Cleanup function to free all initialization hooks and the hash table.
  * Call this at program shutdown to prevent memory leaks.
  */
+/*
+ * g_hash_table_foreach() calls a GHFunc, which takes (key, value, user_data).
+ * This took two arguments, so the key - the name string, which is a literal
+ * from the INIT_FUNC macro and was never ours to free - arrived where the hook
+ * list was expected, and every shutdown cleared and free()d that instead.
+ */
 static void
-_CleanupHookListValue(gpointer value, gpointer data)
+_CleanupHookListValue(gpointer key, gpointer value, gpointer user_data)
 {
     GNamedHookList *namedHookList = (GNamedHookList*)value;
     if (namedHookList)

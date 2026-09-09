@@ -109,8 +109,6 @@ static const BatteryStateNode kStateMachine[] = {
 
 static BatteryStateNode state_node;
 
-extern struct battery_charge battery_params;
-
 #define MAX_DISCHARGE_COUNT    25
 
 static int discharge_count = 0;
