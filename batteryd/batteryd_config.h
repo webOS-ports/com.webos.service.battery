@@ -46,6 +46,6 @@ typedef struct chargeConfig
 
 extern chargeConfig_t gChargeConfig;
 
-int config_init();
+int config_init(void);
 
 #endif // _CONFIG_H_

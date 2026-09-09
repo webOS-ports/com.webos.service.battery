@@ -24,7 +24,10 @@
 
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}  ${CMAKE_CURRENT_SOURCE_DIR}/utils)
 
-file(GLOB SOURCE_FILES charging/* utils/* *.c)
+# Not "charging/* utils/*": that swept up headers, editor leftovers and anything
+# else that happened to be in those directories, and a glob is only re-evaluated
+# when cmake re-runs, so a new source silently does not get built.
+file(GLOB SOURCE_FILES charging/*.c utils/*.c *.c)
 webos_configure_source_files(SOURCE_FILES config.c timesaver.c)
 
 add_executable(batteryd ${SOURCE_FILES})

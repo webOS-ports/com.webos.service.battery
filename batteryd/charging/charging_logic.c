@@ -73,25 +73,11 @@ static ChargeState StateShutdownWait(nyx_charger_event_t event);
 
 static struct ChargeStateNode kStateMachine[kChargeStateLast] = {
     { kChargeStateIdle,                StateIdle },
-//    { kChargeStateCritical,            StateCritical },
-//    { kChargeStateCriticalWait,        StateCriticalWait },
     { kChargeStateCharging,            StateCharging },
     { kChargeStateFault,               StateFault },
     { kChargeStateChargeComplete,      StateChargeComplete },
     { kChargeStateShutdown,            StateShutdown },
     { kChargeStateShutdownWait,        StateShutdownWait },
-};
-
-#define VOLTAGE_WINDOW (5)
-#define VOLTAGE_WINDOW_MAJORITY (3)
-
-#define CURRENT_WINDOW (5)
-#define CURRENT_WINDOW_MAJORITY (3)
-
-enum {
-    kTaperChargeComplete = 0,
-    kTaperMediumTemperature,
-    kTaperEnd,
 };
 
 typedef enum
@@ -109,18 +95,10 @@ struct {
 
     int    max_charging_mA;
 
-    struct timespec start_charging;
-
-    time_t stop_charging_sec;
-
-    time_t taper_time_start[kTaperEnd];
-
     ChargeState     current_state;
     struct ChargeStateNode state_node;
 
     const char *shutdown_reason;
-
-    int             chargerTimeoutSource;
 } gCurrentChargeState;
 
 /**
@@ -236,15 +214,8 @@ bool BatteryOverchargeFault(nyx_battery_status_t *state)
 static void
 ChargeStateReset(void)
 {
-    int i;
     gCurrentChargeState.charging_enabled = CHARGING_NOTSET;
-    gCurrentChargeState.start_charging.tv_sec = 0;
-    gCurrentChargeState.start_charging.tv_nsec = 0;
     gCurrentChargeState.shutdown_reason = "";
-
-    for (i = 0; i < kTaperEnd; i++) {
-        gCurrentChargeState.taper_time_start[i] = -1;
-    }
 }
 
 static int
@@ -397,12 +368,6 @@ StateIdle(nyx_charger_event_t event)
         return kChargeStateLast;
     }
 
-#if 0
-    if (!gChargeConfig.skip_battery_check && !BatteryIsPresent())
-    {
-        return kChargeStateCritical;
-    }
-#endif
 
     if(event & NYX_CHARGER_CONNECTED)
     	return kChargeStateCharging;
@@ -410,49 +375,6 @@ StateIdle(nyx_charger_event_t event)
     	return kChargeStateLast;
 }
 
-#if 0
-/**
-* @brief This state is reached if BatteryLevelCritical().
-*
-* A message is sent to the world that the battery level is critical.
-* The world should turn off the radios and initiate the shutdown sequence.
-*
-* Also installs a shutdown watchdog to fire if the device does not attempt
-* to shut down in 10s.
-*
-* @param  state
-*
-* @retval
-*/
-static ChargeState
-StateCritical(battery_status_t *state)
-{
-
-    BATTERYDLOG(LOG_CRIT,
-        "Battery level is critical... sending shutdown warning");
-
-    MachineShutdown("Critical battery levels");
-    return getNewState(kChargeStateCritical);
-}
-
-/**
-* @brief At critical battery level wait for shutdown...
-*
-* In the past, we used to check for the presence of a charger, but since
-* critical battery level is now a point of no return, we will most definitely
-* shut down.
-*
-* @param  state
-*
-* @retval
-*/
-static ChargeState
-StateCriticalWait(battery_status_t *state)
-{
-    // The state machine will stick in this state until we actually shut down
-    return getNewState(kChargeStateCriticalWait);
-}
-#endif
 
 /**
  * @brief This is the state in which the device begins shutting down.

@@ -333,26 +333,6 @@ bool batteryStatusQuery(LSHandle *sh,
     return TRUE;
 }
 
-void machineShutdown(void)
-{
-    char *payload = g_strdup_printf("{\"reason\":\"Battery level is critical\"}");
-
-    LSError lserror;
-    LSErrorInit(&lserror);
-    BATTERYDLOG(LOG_DEBUG,"%s: Sending payload : %s",__func__,payload);
-
-    bool retVal = LSSignalSend(GetLunaServiceHandle(),
-            "luna://com.webos.service.sleep/shutdown/machineOff",
-            payload, &lserror);
-    g_free(payload);
-
-    if (!retVal)
-    {
-        LSErrorPrint(&lserror, stderr);
-        LSErrorFree(&lserror);
-    }
-}
-
 void sendBatteryStatus(void)
 {
     char *payload = buildBatteryStatusPayload();
@@ -394,41 +374,49 @@ bool BatteryDummyValues(int percent, int temp_C, int current_mA, int voltage_mV,
 {
     #define FAKEBATT    "/tmp/fakebattery/"
 
+    static const struct { const char *node; const char *fmt; } nodes[] = {
+        { "percentage",  "%d" },
+        { "temperature", "%d" },
+        { "current",     "%d" },
+        { "voltage",     "%d" },
+    };
     char value[256];
-    int ret = 0;
+    size_t i;
+    int ints[4];
 
-    snprintf(value,sizeof(value),"mkdir %s; touch %s/percentage; touch %s/temperature; "
-        "touch %s/voltage; touch %s/current ; touch %s/capacity",FAKEBATT,FAKEBATT,
-        FAKEBATT,FAKEBATT,FAKEBATT,FAKEBATT);
+    ints[0] = percent;
+    ints[1] = temp_C;
+    ints[2] = current_mA;
+    ints[3] = voltage_mV;
 
-    system(value);
-
-    snprintf(value,sizeof(value),"%d",percent);
-    ret = SysfsWriteString(FAKEBATT "percentage",value);
-    if(ret)
+    /*
+     * This used to shell out to "mkdir ...; touch ...; touch ..." with
+     * system(), six times over, because SysfsWriteString opens O_WRONLY and
+     * cannot create. g_file_set_contents creates and replaces, so neither the
+     * shell nor the touches are needed.
+     */
+    if (g_mkdir_with_parents(FAKEBATT, 0755) != 0)
+    {
+        BATTERYDLOG(LOG_ERR,"%s: cannot create %s",__func__,FAKEBATT);
         return false;
+    }
 
-    snprintf(value,sizeof(value),"%d",temp_C);
-    ret = SysfsWriteString(FAKEBATT "temperature",value);
-    if(ret)
-        return false;
+    for (i = 0; i < G_N_ELEMENTS(nodes); i++)
+    {
+        gchar *path = g_build_filename(FAKEBATT, nodes[i].node, NULL);
+        gboolean ok;
 
-    snprintf(value,sizeof(value),"%d",current_mA);
-    ret = SysfsWriteString(FAKEBATT "current",value);
-    if(ret)
-        return false;
+        snprintf(value, sizeof(value), nodes[i].fmt, ints[i]);
+        ok = g_file_set_contents(path, value, -1, NULL);
+        g_free(path);
 
-    snprintf(value,sizeof(value),"%d",voltage_mV);
-    ret = SysfsWriteString(FAKEBATT "voltage",value);
-    if(ret)
-        return false;
+        if (!ok)
+            return false;
+    }
 
-    snprintf(value,sizeof(value),"%8.3f",capacity_mAh);
-    ret = SysfsWriteString(FAKEBATT "capacity",value);
-    if(ret)
-        return false;
+    snprintf(value, sizeof(value), "%8.3f", capacity_mAh);
 
-    return true;
+    return g_file_set_contents(FAKEBATT "capacity", value, -1, NULL) != FALSE;
 }
 
 

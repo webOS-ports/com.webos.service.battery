@@ -151,6 +151,9 @@ config_init(void)
                 __FUNCTION__, config_path);
         goto end;
     }
+    /* NOTE: parse_kern_cmdline() runs below the "end" label, so that
+     * skip_battery_check=1 on the kernel command line is honoured on the
+     * ordinary path where there is no config file at all. */
 
     /// [general]
     CONFIG_GET_INT(config_file, "general", "debug", gChargeConfig.debug);
@@ -164,9 +167,9 @@ config_init(void)
                     gChargeConfig.disable_overcharge_check);
 
 
+end:
     parse_kern_cmdline();
 
-end:
     g_free(config_path);
     if (config_file) g_key_file_free(config_file);
     return 0;
