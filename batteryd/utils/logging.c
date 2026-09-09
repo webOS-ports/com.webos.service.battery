@@ -50,7 +50,8 @@ _good_assert(const char * cond_str, bool cond)
     if (G_UNLIKELY(!(cond)))
     {
         g_critical("%s", cond_str);
-        *(int*)0x00 = 0;
+        /* was *(int*)0 = 0; abort() gets you the same core with a usable top frame */
+        abort();
     }
 }
 
@@ -129,7 +130,13 @@ int LOGGetLevel()
 static void
 logFilter(const gchar *log_domain, GLogLevelFlags log_level, const gchar *message, gpointer unused_data)
 {
-    if (log_level > sLogLevel) return;
+    /*
+     * GLib log levels are bit flags, and log_level arrives with
+     * G_LOG_FLAG_RECURSION / G_LOG_FLAG_FATAL possibly set in the low bits.
+     * Comparing the raw value against the threshold let those flags decide
+     * whether a message was filtered.
+     */
+    if ((log_level & G_LOG_LEVEL_MASK) > sLogLevel) return;
 
     g_assert( sHandler < LOG_NUM_HANDLERS );
     g_assert( sHandler >= 0 );
@@ -165,33 +172,43 @@ LOGSetHandler(LOGHandler h)
  * @brief LOGInit
  */
 void 
-LOGInit() 
+LOGInit(void) 
 {
    g_log_set_default_handler(logFilter, NULL);
 }
 
 void
-write_console(char *format, ...)
+write_console(const char *format, ...)
 {
+    char buffer[1024];
+    va_list args;
+    int len;
     int fd;
+
     fd = open("/dev/console", O_RDWR | O_NOCTTY);
     if (fd < 0)
     {
         perror("open"); return;
     }
 
-    va_list args;
     va_start(args, format);
-
-    char buffer[1025];
-    int len = vsnprintf(buffer, 1024, format, args);
+    len = vsnprintf(buffer, sizeof(buffer), format, args);
+    va_end(args);
 
     if (len > 0)
     {
-        write(fd, buffer, len);
-    }
+        /*
+         * vsnprintf returns the length it would have needed, not the length it
+         * wrote. Handing that straight to write() read past the buffer for any
+         * message longer than it.
+         */
+        size_t n = ((size_t)len < sizeof(buffer)) ? (size_t)len : sizeof(buffer) - 1;
 
-    va_end(args);
+        if (write(fd, buffer, n) < 0)
+        {
+            /* the console is best-effort; there is nowhere better to complain */
+        }
+    }
 
     close(fd);
 }

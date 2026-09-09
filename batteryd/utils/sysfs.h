@@ -21,8 +21,6 @@
 #ifndef _SYSFS_H_
 #define _SYSFS_H_
 
-int SysfsGetInt(const char *path, int *ret_data);
-int SysfsGetDouble(const char *path, double *ret_data);
 int SysfsGetString(const char *path, char *ret_string, size_t maxlen);
 
 int SysfsWriteString(const char *path, const char *string);

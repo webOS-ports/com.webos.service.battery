@@ -41,7 +41,7 @@ LSMessageReplyErrorInvalidParams(LSHandle *sh, LSMessage *message)
     LSErrorInit(&lserror);
 
     bool retVal = LSMessageReply(sh, message, "{\"returnValue\":false,"
-        "\"errorText\":\"Invalid parameters.\"}", NULL);
+        "\"errorText\":\"Invalid parameters.\"}", &lserror);
     if (!retVal)
     {
         LSErrorPrint(&lserror, stderr);
@@ -56,7 +56,7 @@ LSMessageReplyErrorBadJSON(LSHandle *sh, LSMessage *message)
     LSErrorInit(&lserror);
 
     bool retVal = LSMessageReply(sh, message, "{\"returnValue\":false,"
-        "\"errorText\":\"Malformed json.\"}", NULL);
+        "\"errorText\":\"Malformed json.\"}", &lserror);
     if (!retVal)
     {
         LSErrorPrint(&lserror, stderr);
@@ -71,7 +71,7 @@ LSMessageReplySuccess(LSHandle *sh, LSMessage *message)
     LSErrorInit(&lserror);
 
     bool retVal = LSMessageReply(sh, message, "{\"returnValue\":true}",
-        NULL);
+        &lserror);
     if (!retVal)
     {
         LSErrorPrint(&lserror, stderr);

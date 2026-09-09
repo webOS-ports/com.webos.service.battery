@@ -30,6 +30,8 @@
 #include <unistd.h>
 
 #include <errno.h>
+#include <stddef.h>
+#include <string.h>
 #include <glib.h>
 
 #include "uevent.h"
@@ -57,6 +59,9 @@ ChangeGIOHelper(GIOChannel *source, GIOCondition condition, gpointer ctx)
 
     msg.msg_iov = &iov;
     msg.msg_iovlen = 1;
+    /* one byte short, so a full datagram still leaves room for the NUL that
+     * the strstr() and strncmp() below assume is there */
+    iov.iov_len = sizeof(buf) - 1;
     nbytes = recvmsg(socket, &msg, 0);
     g_debug("ChangeGIOHelper: received %d bytes", nbytes);
     if (nbytes < 0)
@@ -78,11 +83,16 @@ ChangeGIOHelper(GIOChannel *source, GIOCondition condition, gpointer ctx)
 
     if (strncmp(buf, "change", strlen("change")) == 0)
     {
-    	data = malloc(nbytes);
-    	if(data)
-    		memcpy(data, buf, nbytes);
-    	else
-    		g_critical("%s: Malloc failed\n", __func__);
+        data = malloc(nbytes);
+
+        if (!data)
+        {
+            /* this used to fall through and call func() with NULL */
+            g_critical("%s: Malloc failed\n", __func__);
+            return TRUE;
+        }
+
+        memcpy(data, buf, nbytes);
 
         func(nbytes, data);
 
