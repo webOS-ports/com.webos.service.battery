@@ -46,18 +46,37 @@ static nyx_device_handle_t battDev = NULL;
 nyx_battery_ctia_t battery_ctia_params;
 
 
-void battery_read(nyx_battery_status_t *status)
+/*
+ * Returns false when there is nothing to read, having zeroed *status.
+ *
+ * This used to return void and, on both the no-device and the query-failed
+ * path, leave the caller's struct exactly as it found it - uninitialised stack.
+ * Every caller then read percentage, temperature and present out of it. The
+ * battery poll state machine is driven by that "present", so a failed read
+ * could put it in the removed state, and from there charging_logic shuts the
+ * device down. Say so instead, and leave a determinate zeroed struct behind for
+ * callers that carry on regardless.
+ */
+bool battery_read(nyx_battery_status_t *status)
 {
+    if (!status)
+        return false;
+
+    memset(status, 0, sizeof(*status));
+
     if(battDev == NULL)
-        return;
+        return false;
 
     nyx_error_t err = nyx_battery_query_battery_status(battDev,status);
 
     if(err != NYX_ERROR_NONE)
     {
         BATTERYDLOG(LOG_ERR,"%s: nyx_battery_query_battery_status returned with error : %d",__func__,err);
-        return;
+        memset(status, 0, sizeof(*status));
+        return false;
     }
+
+    return true;
 }
 
 
@@ -78,13 +97,33 @@ int battery_get_ctia_params(void)
 
 
 
-bool battery_authenticate()
+bool battery_authenticate(void)
 {
-    bool result;
+    bool result = false;
+    nyx_error_t err;
 
     if (battery_ctia_params.skip_battery_authentication)
         return true;
-    nyx_battery_authenticate_battery(battDev, &result);
+
+    if (!battDev)
+        return true;
+
+    err = nyx_battery_authenticate_battery(battDev, &result);
+
+    /*
+     * The return value was ignored and an uninitialised bool returned with it.
+     * A module that does not authenticate answers NYX_ERROR_NOT_IMPLEMENTED,
+     * and most do not; treat anything we could not ask as authentic, because
+     * the alternative is refusing to charge a battery we have no evidence
+     * against.
+     */
+    if (err != NYX_ERROR_NONE)
+    {
+        BATTERYDLOG(LOG_DEBUG,"%s: nyx_battery_authenticate_battery returned %d,"
+                    " treating the battery as authentic",__func__,err);
+        return true;
+    }
+
     return result;
 }
 
@@ -218,6 +257,8 @@ static char *buildBatteryStatusPayload(void)
     if(err != NYX_ERROR_NONE)
     {
         BATTERYDLOG(LOG_ERR,"%s: nyx_battery_query_battery_status returned with error : %d",__func__,err);
+        /* status is untouched stack; publishing it would broadcast garbage. */
+        return NULL;
     }
 
     int percent_ui = getUiPercent(status.percentage);
@@ -448,17 +489,17 @@ int BatteryInit(void)
 {
     int ret = 0;
     nyx_error_t error = NYX_ERROR_NONE;
-    nyx_device_iterator_handle_t iteraror = NULL;
+    nyx_device_iterator_handle_t iterator = NULL;
 
-    error = nyx_device_get_iterator(NYX_DEVICE_BATTERY, NYX_FILTER_DEFAULT, &iteraror);
-    if(error != NYX_ERROR_NONE || iteraror == NULL) {
+    error = nyx_device_get_iterator(NYX_DEVICE_BATTERY, NYX_FILTER_DEFAULT, &iterator);
+    if(error != NYX_ERROR_NONE || iterator == NULL) {
          goto error;
     }
     else if (error == NYX_ERROR_NONE)
     {
         nyx_device_id_t id = NULL;
 
-        while ((error = nyx_device_iterator_get_next_id(iteraror,
+        while ((error = nyx_device_iterator_get_next_id(iterator,
             &id)) == NYX_ERROR_NONE && NULL != id)
         {
             g_debug("Batteryd: Battery device id \"%s\" found",id);
@@ -525,8 +566,8 @@ int BatteryInit(void)
     }
 
 out:
-    if(iteraror)
-        free(iteraror);
+    if(iterator)
+        nyx_device_release_iterator(iterator);
     return ret;
 
 lserror:
@@ -538,8 +579,8 @@ lserror:
 error:
     g_critical("Batteryd: No battery device found\n");
     battDev = NULL;
-    if(iteraror)
-        free(iteraror);
+    if(iterator)
+        nyx_device_release_iterator(iterator);
 //    abort();
     return 0;
 }

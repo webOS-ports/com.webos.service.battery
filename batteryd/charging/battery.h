@@ -62,7 +62,7 @@ double battery_get_age(void);
 
 const char * battery_status(void);
 
-void battery_read(nyx_battery_status_t *state);
+bool battery_read(nyx_battery_status_t *state);
 void battery_set_empty(nyx_battery_status_t *state);
 
 void battery_search(bool on);

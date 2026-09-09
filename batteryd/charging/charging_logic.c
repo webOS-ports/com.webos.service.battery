@@ -48,7 +48,7 @@
 
 
 
-static char *debug_state_description[kChargeStateLast+1] =
+static const char * const debug_state_description[kChargeStateLast+1] =
 {
     "idle",
     "charging",
@@ -460,22 +460,36 @@ StateCriticalWait(battery_status_t *state)
 static ChargeState
 StateShutdown(nyx_charger_event_t event)
 {
-	char default_reason[] = "Critical battery levels";
-	nyx_battery_status_t state;
-	battery_read(&state);
+    static const char kDefaultReason[] = "Critical battery levels";
+    const char *reason = gCurrentChargeState.shutdown_reason;
+    nyx_battery_status_t state;
+    char *report;
 
-    char *report = g_strdup_printf(
+    battery_read(&state);
+
+    report = g_strdup_printf(
             "Shutting down with battery"
             "(P: %d%%, T: %d C, C: %d mA, V: %d mV)",
             state.percentage, state.temperature,
             state.current, state.voltage);
 
-    write_console(report);
+    /* report is data, not a format string */
+    write_console("%s", report);
 
-    if(!gCurrentChargeState.shutdown_reason && !strlen(gCurrentChargeState.shutdown_reason))
-    	gCurrentChargeState.shutdown_reason = default_reason;
+    /*
+     * This read "if (!reason && !strlen(reason))", which can only ever call
+     * strlen on a NULL pointer, and which short-circuits to false for every
+     * non-NULL reason - including the empty string ChargeStateReset() sets.
+     * So the default was never applied and the device shut down with an empty
+     * reason. The default is also static now: it used to be a local array whose
+     * address was stored in a global that outlives this frame.
+     */
+    if (!reason || !*reason)
+        reason = kDefaultReason;
 
-    MachineShutdown(gCurrentChargeState.shutdown_reason);
+    gCurrentChargeState.shutdown_reason = reason;
+
+    MachineShutdown(reason);
 
     g_free(report);
 
@@ -585,10 +599,6 @@ ChargingLogicUpdate(nyx_charger_event_t event)
         return;
     }
 
-
-    battery_read(&state);
-
-
     if (gChargeConfig.disable_charging)
     {
         BATTERYDLOG(LOG_INFO, "Not making a charge decision because"
@@ -604,9 +614,17 @@ ChargingLogicUpdate(nyx_charger_event_t event)
     }
 }
 
-static int
-_battery_check_reason_helper(int batterycheck)
+/*
+ * A GSourceFunc, so that g_idle_add() is handed a function of the type it
+ * actually calls. This was an int(int) cast to GSourceFunc, with the reason
+ * cast straight from int to gpointer - two diagnostics and, on any ABI where
+ * the two disagree, a wrong answer.
+ */
+static gboolean
+_battery_check_reason_helper(gpointer data)
 {
+    int batterycheck = GPOINTER_TO_INT(data);
+
     switch (batterycheck)
     {
     case BATTERYCHECK_CRITICAL_LOW_BATTERY:
@@ -621,14 +639,14 @@ _battery_check_reason_helper(int batterycheck)
     default:
         break;
     }
-     return 0;
+
+    return G_SOURCE_REMOVE;
 }
 
 void
 BatteryCheckReason(int batterycheck)
 {
-    g_idle_add((GSourceFunc)_battery_check_reason_helper,
-    (gpointer)batterycheck);
+    g_idle_add(_battery_check_reason_helper, GINT_TO_POINTER(batterycheck));
 }
 
 /**
@@ -638,18 +656,16 @@ BatteryCheckReason(int batterycheck)
 void
 ChargingLogicResetError(void)
 {
-    nyx_battery_status_t state;
     BATTERYDLOG(LOG_CRIT, "Modem was reset... restarting charge state.");
 
     ChargeStateInit();
-    battery_read(&state);
     ChargingLogicUpdate(NYX_NO_NEW_EVENT);
 }
 
 /**
  * @brief Return the maximum battery temperature over which the device is shut down.
  */
-int batterycheck_maxtemp()
+int batterycheck_maxtemp(void)
 {
     if (gChargeConfig.maxtemp)
       return gChargeConfig.maxtemp;
@@ -698,7 +714,8 @@ void handle_charger_event(nyx_charger_event_t event)
 	}
 	if(event & NYX_BATTERY_TEMPERATURE_LIMIT) {
 		nyx_battery_status_t batt;
-		battery_read(&batt);
+		if(!battery_read(&batt))
+			return;
 		if(BatteryTemperatureCriticalShutdown(&batt))
 			_JumpToShutdownState("battery temperature above max allowed");
 		else if(BatteryTemperatureHigh(&batt) || BatteryTemperatureLow(&batt))
