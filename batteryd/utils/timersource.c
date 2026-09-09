@@ -216,7 +216,7 @@ g_timer_source_new_seconds(guint interval_sec)
     source = g_source_new(&g_timer_source_funcs, sizeof(GTimerSource));
     tsource = (GTimerSource*)source;
 
-    GTimeVal now;
+    struct timeval now;
 
     tsource->interval_ms = 1000*interval_sec;
     tsource->granularity = 1000;
@@ -237,7 +237,7 @@ g_timer_source_set_interval_seconds(GTimerSource *tsource, guint interval_sec, g
 void
 g_timer_source_set_interval(GTimerSource *tsource, guint interval_ms, gboolean from_poll)
 {
-    GTimeVal now;
+    struct timeval now;
 
     g_timer_get_current_time(tsource, &now);
 

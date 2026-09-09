@@ -29,41 +29,27 @@
  * Structures
  */
 
-extern struct battery_charge battery_params;
+/*
+ * Defined in battery.c. Both battery.c and charging_logic.c used to carry a
+ * tentative definition of their own, which is a duplicate-symbol link failure
+ * under -fno-common - the compiler default since GCC 10 - and only ever linked
+ * because something in the build was still passing -fcommon.
+ */
+extern nyx_battery_ctia_t battery_ctia_params;
 
 void BatteryCheckReason(int batterycheck);
 
-bool BatteryIsPresent();
-bool BatteryIsAuthentic();
+bool BatteryIsPresent(void);
+bool BatteryIsAuthentic(void);
 
-int battery_init(void);
-
-bool battery_present_sample(nyx_battery_status_t  *state);
-bool battery_present(void);
-
-int battery_get_percent(void);
-int battery_get_temperature(void);
-int battery_get_voltage(void);
-int battery_get_current(void);
-
-int battery_get_avg_current(void);
 bool battery_authenticate(void);
 
-double battery_get_full40(void);
-double battery_get_rawcoulomb(void);
-double battery_get_coulomb(void);
-double battery_get_age(void);
-
-const char * battery_status(void);
-
-void battery_read(nyx_battery_status_t *state);
-void battery_set_empty(nyx_battery_status_t *state);
+bool battery_read(nyx_battery_status_t *state);
 
 void battery_search(bool on);
 
 int battery_get_ctia_params(void);
 void battery_set_wakeup_percentage(bool charging, bool suspend);
-void battery_init_wakeup_params(void);
 
 
 
@@ -77,7 +63,6 @@ bool batteryStatusQuery(LSHandle *sh, LSMessage *message, void *user_data);
  * Lunabus signals
  */
 
-int SendBatteryNotification(bool significant);
 void sendBatteryStatus(void);
 
 #endif // __BATTERY_H__

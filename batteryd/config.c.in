@@ -60,6 +60,9 @@ chargeConfig_t gChargeConfig =
     .fasthalt = 0, 
     .maxtemp = 0, // defaults in batterypoll.c
     .temprate = 0,
+
+    // percent at or below which we shut down; 0 disables
+    .critical_percent = 2,
             
 };
 
@@ -151,6 +154,9 @@ config_init(void)
                 __FUNCTION__, config_path);
         goto end;
     }
+    /* NOTE: parse_kern_cmdline() runs below the "end" label, so that
+     * skip_battery_check=1 on the kernel command line is honoured on the
+     * ordinary path where there is no config file at all. */
 
     /// [general]
     CONFIG_GET_INT(config_file, "general", "debug", gChargeConfig.debug);
@@ -162,11 +168,13 @@ config_init(void)
                     gChargeConfig.disable_charging);
     CONFIG_GET_BOOL(config_file, "battery", "disable_overcharge_check",
                     gChargeConfig.disable_overcharge_check);
+    CONFIG_GET_INT(config_file, "battery", "critical_percent",
+                   gChargeConfig.critical_percent);
 
-
-    parse_kern_cmdline();
 
 end:
+    parse_kern_cmdline();
+
     g_free(config_path);
     if (config_file) g_key_file_free(config_file);
     return 0;

@@ -30,18 +30,13 @@
 #define DECLARE_LSMETHOD(methodName) \
     bool methodName(LSHandle *handle, LSMessage *message, void *user_data)
 
-DECLARE_LSMETHOD(identifyCallback);
-
 DECLARE_LSMETHOD(batteryStatusQuery);
 DECLARE_LSMETHOD(chargerStatusQuery);
-
-DECLARE_LSMETHOD(TESTChargeStateFault);
-DECLARE_LSMETHOD(TESTChargeStateShutdown);
 
 LSMethod com_webos_service_battery_methods[] = {
     { "batteryStatusQuery", batteryStatusQuery },
     { "chargerStatusQuery", chargerStatusQuery },
-    { },
+    { NULL, NULL },
 };
 
 LSSignal com_webos_service_battery_signals[] = {
@@ -52,8 +47,8 @@ LSSignal com_webos_service_battery_signals[] = {
 
     { "chargerConnected" },
     { "USBDockStatus" },
-    
-    { },
+
+    { NULL },
 };
 
 static int

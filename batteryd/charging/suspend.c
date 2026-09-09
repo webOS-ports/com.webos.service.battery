@@ -62,7 +62,7 @@ enum {
     kResumeTypeNonIdle
 };
 
-static char *resume_type_descriptions[] =
+static const char * const resume_type_descriptions[] =
 {
     "kernel",
     "batteryd_activity",
@@ -161,7 +161,12 @@ bool resumeSignal(LSHandle *sh,
     if(registration)
         goto out;
 
-    resumetype = json_object_get_boolean(json_object_object_get(object, "resumetype"));
+    /*
+     * resumetype is one of kResumeType*, i.e. 0..2. Read with get_boolean it
+     * could only ever come back 0 or 1, so kResumeTypeNonIdle was unreachable
+     * and any non-zero value collapsed to kResumeTypeActivity.
+     */
+    resumetype = json_object_get_int(json_object_object_get(object, "resumetype"));
 
     if(resumetype <= kResumeTypeNonIdle)
     {
@@ -220,7 +225,16 @@ SuspendInit(void)
 
     if (!retVal) goto ls_error;
 
+    return 0;
+
 ls_error:
+    /*
+     * The success path used to fall straight into this label, so a failure to
+     * subscribe was indistinguishable from success and reported nothing. It
+     * still returns 0: an init hook that returns < 0 makes TheOneInit abort the
+     * daemon, and losing these two subscriptions is not worth that.
+     */
+    LSErrorPrint(&lserror, stderr);
     LSErrorFree(&lserror);
     return 0;
 }

@@ -32,7 +32,7 @@ void LOGSetLevel(int level);
 void LOGInit();
 
 int get_glib_from_syslog_level(int syslog_level);
-void write_console(char *format, ...);
+void write_console(const char *format, ...) G_GNUC_PRINTF(1, 2);
 
 
 #define BATTERYDLOG(syslog_level, ...) \

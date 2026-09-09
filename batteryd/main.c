@@ -31,18 +31,17 @@
 #include "init.h"
 #include "batteryd_debug.h"
 #include "timesaver.h"
+#include "batteryd_config.h"
 #include "logging.h"
 
 static GMainLoop *mainloop = NULL;
 static LSHandle* private_sh = NULL;
 
 bool batteryd_debug = false;
-bool batteryd_is_running = false;
 
 void
 term_handler(int signal)
 {
-    batteryd_is_running = false;
     g_main_loop_quit(mainloop);
 }
 
@@ -63,26 +62,31 @@ int
 main(int argc, char **argv)
 {
     bool retVal;
+    int exit_status = 0;
 
+    /*
+     * Every one of these was parsed into a local and then dropped on the floor:
+     * only --debug had any effect at all, and only because it is read a few
+     * lines below. The five that have somewhere to go are written into
+     * gChargeConfig before TheOneInit() runs, so the modules see them. The
+     * three that did not - --visual-leds-suspend, --verbose-syslog and
+     * --error-on-critical - are gone rather than left in --help promising
+     * something the daemon does not do.
+     */
     gboolean debug = FALSE;
     gboolean fake_battery = FALSE;
-    gboolean visual_leds_suspend = FALSE;
-    gboolean verbose = FALSE;
-    gboolean err_on_crit = FALSE;
     gboolean fasthalt = FALSE;
     gint maxtemp = 0;
     gint temprate = 0;
-
+    gint critical_percent = -1;
 
     GOptionEntry entries[] = {
         {"debug", 'd', 0, G_OPTION_ARG_NONE, &debug, "turn debug logging on", NULL},
         {"use-fake-battery", 'b', 0, G_OPTION_ARG_NONE, &fake_battery, "Use fake battery", NULL},
-        {"visual-leds-suspend", 'l', 0, G_OPTION_ARG_NONE, &visual_leds_suspend, "Use LEDs to show wake/suspend state", NULL},
-        {"verbose-syslog", 'v', 0, G_OPTION_ARG_NONE, &verbose, "Use Verbose syslog output", NULL},
-        {"error-on-critical", 'e', 0, G_OPTION_ARG_NONE, &err_on_crit, "Crash on critical error", NULL},
         {"maxtemp", 'M', 0, G_OPTION_ARG_INT, &maxtemp, "Set maximum temperature before shutdown (default 60)", NULL},
         {"temprate", 'T', 0, G_OPTION_ARG_INT, &temprate, "Expected maxiumum temperature slew rate (default 12)", NULL},
         {"fasthalt", 'F', 0, G_OPTION_ARG_NONE, &fasthalt, "On overtemp, shut down quickly not cleanly", NULL},
+        {"critical-percent", 'C', 0, G_OPTION_ARG_INT, &critical_percent, "Shut down at or below this battery percent, 0 to disable (default 2)", NULL},
         { NULL }
     };
 
@@ -110,6 +114,21 @@ main(int argc, char **argv)
         LOGSetLevel(G_LOG_LEVEL_DEBUG);
         LOGSetHandler(LOGGlibLog);
     }
+
+    /*
+     * config_init() runs as an INIT_FUNC_FIRST hook and can still override
+     * these from com.webos.service.battery.conf, which is the existing
+     * precedence and is left alone.
+     */
+    gChargeConfig.debug        = debug ? true : false;
+    gChargeConfig.fake_battery = fake_battery ? true : false;
+    gChargeConfig.fasthalt     = fasthalt ? 1 : 0;
+    gChargeConfig.maxtemp      = maxtemp;
+    gChargeConfig.temprate     = temprate;
+
+    /* -1 means "not given"; 0 is a real value that disables the check */
+    if (critical_percent >= 0)
+        gChargeConfig.critical_percent = critical_percent;
    
     signal(SIGTERM, term_handler);
     signal(SIGINT, term_handler);
@@ -153,10 +172,11 @@ end:
     // save time before quitting...
     timesaver_save();
 
-    return 0;
+    return exit_status;
 ls_error:
     g_critical("Fatal - Could not initialize batteryd.  Is LunaService Down?. %s",
         lserror.message);
     LSErrorFree(&lserror);
+    exit_status = 1;
     goto end;
 }

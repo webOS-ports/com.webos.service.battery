@@ -47,9 +47,9 @@ SysfsGetString(const char *path, char *ret_string, size_t maxlen)
 {
     GError *gerror = NULL;
     char *contents = NULL;
-    gsize len;
 
-    if (!path || !g_file_get_contents(path, &contents, &len, &gerror)) {
+    if (!path || !ret_string || maxlen == 0 ||
+        !g_file_get_contents(path, &contents, NULL, &gerror)) {
         if (gerror) {
             BATTERYDLOG(LOG_CRIT, "%s: %s", __FUNCTION__, gerror->message);
             g_error_free(gerror);
@@ -62,68 +62,6 @@ SysfsGetString(const char *path, char *ret_string, size_t maxlen)
 
     g_free(contents);
 
-    return 0;
-}
-
-int 
-SysfsGetInt(const char *path, int *ret_data)
-{
-    GError *gerror = NULL;
-    char *contents = NULL;
-    char *endptr;
-    gsize len;
-    long int val;
-
-    if (!path || !g_file_get_contents(path, &contents, &len, &gerror)) {
-        if (gerror) {
-            BATTERYDLOG(LOG_CRIT, "%s: %s", __FUNCTION__, gerror->message);
-            g_error_free(gerror);
-        }
-        return -1;
-    }
-
-    val = strtol(contents, &endptr, 10);
-    if (endptr == contents) {
-        BATTERYDLOG(LOG_CRIT, "%s: Invalid input in %s.",
-            __FUNCTION__, path);
-        goto end;
-    }
-
-    if (ret_data)
-        *ret_data = val;
-end:
-    g_free(contents);
-    return 0;
-}
-
-int 
-SysfsGetDouble(const char *path, double *ret_data)
-{
-    GError *gerror = NULL;
-    char *contents = NULL;
-    char *endptr;
-    gsize len;
-    float val;
-
-    if (!path || !g_file_get_contents(path, &contents, &len, &gerror)) {
-        if (gerror) {
-            BATTERYDLOG(LOG_CRIT, "%s: %s", __FUNCTION__, gerror->message);
-            g_error_free(gerror);
-        }
-        return -1;
-    }
-
-    val = strtod(contents, &endptr);
-    if (endptr == contents) {
-        BATTERYDLOG(LOG_CRIT, "%s: Invalid input in %s.",
-            __FUNCTION__, path);
-        goto end;
-    }
-
-    if (ret_data)
-        *ret_data = val;
-end:
-    g_free(contents);
     return 0;
 }
 

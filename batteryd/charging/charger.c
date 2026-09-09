@@ -39,7 +39,6 @@
 #include "main.h"
 #include "batterypoll.h"
 #include "charging_logic.h"
-#include "batterypoll.h"
 #include "batteryd_config.h"
 
 #define LOG_DOMAIN "CHG: "
@@ -99,7 +98,9 @@ chargerStatusQuery(LSHandle *sh,
 
     if(err != NYX_ERROR_NONE)
     {
-        BATTERYDLOG(LOG_ERR,"%s: nyx_charger_query_battery_status returned with error : %d",__func__,err);
+        BATTERYDLOG(LOG_ERR,"%s: nyx_charger_query_charger_status returned with error : %d",__func__,err);
+        /* status is untouched stack; answering out of it reports garbage. */
+        return false;
     }
 
     LSError lserror;
@@ -124,8 +125,6 @@ chargerStatusQuery(LSHandle *sh,
     return TRUE;
 }
 
-bool charger_changed = false;
-
 void sendChargerStatus(bool bOnlyIfChanged)
 {
     nyx_charger_status_t status;
@@ -135,6 +134,12 @@ void sendChargerStatus(bool bOnlyIfChanged)
     if(err != NYX_ERROR_NONE)
     {
         BATTERYDLOG(LOG_ERR,"%s: nyx_charger_query_charger_status returned with error : %d",__func__,err);
+        /*
+         * Carrying on used to broadcast an untouched stack struct and then
+         * memcpy it into currStatus, from where ChargerIsConnected() and
+         * ChargerIsCharging() answer for the rest of the process's life.
+         */
+        return;
     }
     g_debug("sendChargerStatus: connected=%d->%d, powered=%d->%d",currStatus.connected,status.connected,currStatus.powered,status.powered);
 
@@ -230,7 +235,9 @@ void notifyStateChange(nyx_device_handle_t handle, nyx_callback_status_t status,
     nyx_error_t err = nyx_charger_query_charger_event(nyxDev,&new_event);
     if(err != NYX_ERROR_NONE)
     {
-        BATTERYDLOG(LOG_ERR,"%s: nyx_charger_query_event returned with error : %d",__func__,err);
+        BATTERYDLOG(LOG_ERR,"%s: nyx_charger_query_charger_event returned with error : %d",__func__,err);
+        /* new_event is untouched stack, and it drives the state machine. */
+        return;
     }
 
     handle_charger_event(new_event);
@@ -255,7 +262,9 @@ chargerEnableCharging(int *max_charging_current)
         return false;
     }
 
-    *max_charging_current = currStatus.charger_max_current;
+    /* nyx just filled in status; currStatus is whatever the last broadcast saw. */
+    if (max_charging_current)
+        *max_charging_current = status.charger_max_current;
     battery_set_wakeup_percentage(true,false);
     return true;
 }
@@ -280,7 +289,9 @@ void getNewEvent(void)
     nyx_error_t err = nyx_charger_query_charger_event(nyxDev,&new_event);
     if(err != NYX_ERROR_NONE)
     {
-        BATTERYDLOG(LOG_ERR,"%s: nyx_charger_query_event returned with error : %d",__func__,err);
+        BATTERYDLOG(LOG_ERR,"%s: nyx_charger_query_charger_event returned with error : %d",__func__,err);
+        /* new_event is untouched stack, and it drives the state machine. */
+        return;
     }
 
     handle_charger_event(new_event);
@@ -296,16 +307,16 @@ int ChargerInit(void)
     nyx_init();
 
     nyx_error_t error = NYX_ERROR_NONE;
-    nyx_device_iterator_handle_t iteraror = NULL;
+    nyx_device_iterator_handle_t iterator = NULL;
 
-    error = nyx_device_get_iterator(NYX_DEVICE_CHARGER, NYX_FILTER_DEFAULT, &iteraror);
-    if(error != NYX_ERROR_NONE || iteraror == NULL) {
+    error = nyx_device_get_iterator(NYX_DEVICE_CHARGER, NYX_FILTER_DEFAULT, &iterator);
+    if(error != NYX_ERROR_NONE || iterator == NULL) {
        goto error;
     }
     else if (error == NYX_ERROR_NONE)
     {
         nyx_device_id_t id = NULL;
-        while ((error = nyx_device_iterator_get_next_id(iteraror,
+        while ((error = nyx_device_iterator_get_next_id(iterator,
             &id)) == NYX_ERROR_NONE && NULL != id)
         {
             g_debug("Batteryd: Charger device id \"%s\" found",id);
@@ -338,8 +349,8 @@ int ChargerInit(void)
         nyx_charger_register_state_change_callback(nyxDev,notifyStateChange,NULL);
 
 out:
-    if(iteraror)
-        free(iteraror);
+    if(iterator)
+        nyx_device_release_iterator(iterator);
     return ret;
 
 lserror:
@@ -351,8 +362,8 @@ lserror:
 error:
     g_critical("Batteryd: No charger device found\n");
     gChargeConfig.skip_battery_check = 1;
-    if(iteraror)
-        free(iteraror);
+    if(iterator)
+        nyx_device_release_iterator(iterator);
 //    abort();
     return 0;
 }

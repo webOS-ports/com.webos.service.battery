@@ -73,7 +73,7 @@ enum {
 };
 typedef int BatteryState;
 
-static char *debug_battery_state[] =
+static const char * const debug_battery_state[] =
 {
     "removed",
     "debounce",
@@ -108,8 +108,6 @@ static const BatteryStateNode kStateMachine[] = {
 #define BAD_SAMPLES_THRESHOLD    3
 
 static BatteryStateNode state_node;
-
-extern struct battery_charge battery_params;
 
 #define MAX_DISCHARGE_COUNT    25
 
@@ -192,7 +190,7 @@ static bool sample_is_new(nyx_battery_status_t *state)
 /**
  * @brief The battery poll state machine is initialized to start from the "debounce" state.
  */
-static void battery_state_init()
+static void battery_state_init(void)
 {
     state_node = kStateMachine[kBatteryDebounce];
 }
@@ -201,7 +199,7 @@ static void battery_state_init()
 /**
  * @brief Log the current state.
  */
-static void battery_state_log()
+static void battery_state_log(void)
 {
     static BatteryState last_state = kBatteryLast;
     if (last_state != state_node.state) {
@@ -216,7 +214,7 @@ static void battery_state_log()
  * @brief Iterate through the battery poll state machine.
  *
  */
-void battery_state_iterate()
+void battery_state_iterate(void)
 {
     BatteryState next_state;
     do {
@@ -237,7 +235,10 @@ static BatteryState StateDebounce(void)
     static int debounce_bad = 0;
     nyx_battery_status_t battery;
 
-    battery_read(&battery);
+    /* A read we could not make is not evidence that the battery is gone. */
+    if (!battery_read(&battery))
+        return kBatteryLast;
+
     if (battery.present) {
         debounce_bad = 0;
         return kBatteryInserted;
@@ -258,7 +259,8 @@ static BatteryState StateRemoved(void)
 {
     nyx_battery_status_t battery;
 
-    battery_read(&battery);
+    if (!battery_read(&battery))
+        return kBatteryLast;
 
     if (battery.present)
         return kBatteryInserted;
@@ -290,7 +292,8 @@ static BatteryState StateAuthenticOrNot(void)
 {
     nyx_battery_status_t battery;
 
-    battery_read(&battery);
+    if (!battery_read(&battery))
+        return kBatteryLast;
 
     if(ChargerIsCharging() && battery.current <= 0 )
     {

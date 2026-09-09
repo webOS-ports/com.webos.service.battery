@@ -46,10 +46,9 @@
 
 #define BATTERY_MAX_TEMPERATURE_C	60
 
-nyx_battery_ctia_t battery_ctia_params;
 
 
-static char *debug_state_description[kChargeStateLast+1] =
+static const char * const debug_state_description[kChargeStateLast+1] =
 {
     "idle",
     "charging",
@@ -74,25 +73,11 @@ static ChargeState StateShutdownWait(nyx_charger_event_t event);
 
 static struct ChargeStateNode kStateMachine[kChargeStateLast] = {
     { kChargeStateIdle,                StateIdle },
-//    { kChargeStateCritical,            StateCritical },
-//    { kChargeStateCriticalWait,        StateCriticalWait },
     { kChargeStateCharging,            StateCharging },
     { kChargeStateFault,               StateFault },
     { kChargeStateChargeComplete,      StateChargeComplete },
     { kChargeStateShutdown,            StateShutdown },
     { kChargeStateShutdownWait,        StateShutdownWait },
-};
-
-#define VOLTAGE_WINDOW (5)
-#define VOLTAGE_WINDOW_MAJORITY (3)
-
-#define CURRENT_WINDOW (5)
-#define CURRENT_WINDOW_MAJORITY (3)
-
-enum {
-    kTaperChargeComplete = 0,
-    kTaperMediumTemperature,
-    kTaperEnd,
 };
 
 typedef enum
@@ -110,18 +95,10 @@ struct {
 
     int    max_charging_mA;
 
-    struct timespec start_charging;
-
-    time_t stop_charging_sec;
-
-    time_t taper_time_start[kTaperEnd];
-
     ChargeState     current_state;
     struct ChargeStateNode state_node;
 
     const char *shutdown_reason;
-
-    int             chargerTimeoutSource;
 } gCurrentChargeState;
 
 /**
@@ -237,15 +214,8 @@ bool BatteryOverchargeFault(nyx_battery_status_t *state)
 static void
 ChargeStateReset(void)
 {
-    int i;
     gCurrentChargeState.charging_enabled = CHARGING_NOTSET;
-    gCurrentChargeState.start_charging.tv_sec = 0;
-    gCurrentChargeState.start_charging.tv_nsec = 0;
     gCurrentChargeState.shutdown_reason = "";
-
-    for (i = 0; i < kTaperEnd; i++) {
-        gCurrentChargeState.taper_time_start[i] = -1;
-    }
 }
 
 static int
@@ -353,20 +323,33 @@ void MachineShutdown(const char *reason)
 }
 
 
-/**
- * @brief Check if the battery readings are critical. Shutdown the device if any of the following is true:
- * 1. Battery is absent.
- * 2. Battery voltage is below threshold (3.4V for most devices).
- * 3. Battery temperature is above max temperature allowed (60C for most devices).
- *
- * @param state
- *
- * @retval
- */
+/* consecutive readings at or below critical_percent before we act on it */
+#define CRITICAL_PERCENT_SAMPLES 3
 
+/**
+ * @brief Decide whether the battery can still support running.
+ *
+ * Two of the three critical triggers live elsewhere: voltage arrives as
+ * NYX_BATTERY_CRITICAL_VOLTAGE and temperature is checked against the CTIA
+ * parameters, both in handle_charger_event(). This one covers the battery being
+ * gone, and the state of charge.
+ *
+ * The percentage floor exists because the voltage trigger is the nyx module's
+ * to raise, and a module that does not raise it leaves nothing at all between a
+ * running device and a flat battery. It only applies while nothing is charging,
+ * and it wants CRITICAL_PERCENT_SAMPLES readings in a row: gauges lie on the
+ * way up from a cold boot - the rk818 on a PinePhone Pro ramps its reported
+ * charge one point per six seconds from a stale saved value - and one bad
+ * sample should not power the device off.
+ *
+ * @param state   latest readings, only read when state_valid
+ * @param state_valid  false when battery_read() could not answer
+ */
 static bool
-CheckCriticalLevels(nyx_battery_status_t *state)
+CheckCriticalLevels(const nyx_battery_status_t *state, bool state_valid)
 {
+    static int critical_samples = 0;
+
     /* Skip checks for people with fake batteries or bare-boards */
     if (gChargeConfig.skip_battery_check) return false;
 
@@ -376,7 +359,37 @@ CheckCriticalLevels(nyx_battery_status_t *state)
         return true;
     }
 
-    return false;
+    if (!state_valid || gChargeConfig.critical_percent <= 0 ||
+        ChargerIsCharging())
+    {
+        critical_samples = 0;
+        return false;
+    }
+
+    if (state->percentage > gChargeConfig.critical_percent)
+    {
+        critical_samples = 0;
+        return false;
+    }
+
+    critical_samples++;
+
+    BATTERYDLOG(LOG_WARNING,
+        "Battery at %d%%, at or below the critical level of %d%% (%d/%d)",
+        state->percentage, gChargeConfig.critical_percent,
+        critical_samples, CRITICAL_PERCENT_SAMPLES);
+
+    if (critical_samples < CRITICAL_PERCENT_SAMPLES)
+    {
+        return false;
+    }
+
+    critical_samples = 0;
+
+    BATTERYDLOG(LOG_CRIT, "Battery level is critical... shutting down");
+    _JumpToShutdownState("Critical battery levels");
+
+    return true;
 }
 
 /**
@@ -398,12 +411,6 @@ StateIdle(nyx_charger_event_t event)
         return kChargeStateLast;
     }
 
-#if 0
-    if (!gChargeConfig.skip_battery_check && !BatteryIsPresent())
-    {
-        return kChargeStateCritical;
-    }
-#endif
 
     if(event & NYX_CHARGER_CONNECTED)
     	return kChargeStateCharging;
@@ -411,49 +418,6 @@ StateIdle(nyx_charger_event_t event)
     	return kChargeStateLast;
 }
 
-#if 0
-/**
-* @brief This state is reached if BatteryLevelCritical().
-*
-* A message is sent to the world that the battery level is critical.
-* The world should turn off the radios and initiate the shutdown sequence.
-*
-* Also installs a shutdown watchdog to fire if the device does not attempt
-* to shut down in 10s.
-*
-* @param  state
-*
-* @retval
-*/
-static ChargeState
-StateCritical(battery_status_t *state)
-{
-
-    BATTERYDLOG(LOG_CRIT,
-        "Battery level is critical... sending shutdown warning");
-
-    MachineShutdown("Critical battery levels");
-    return getNewState(kChargeStateCritical);
-}
-
-/**
-* @brief At critical battery level wait for shutdown...
-*
-* In the past, we used to check for the presence of a charger, but since
-* critical battery level is now a point of no return, we will most definitely
-* shut down.
-*
-* @param  state
-*
-* @retval
-*/
-static ChargeState
-StateCriticalWait(battery_status_t *state)
-{
-    // The state machine will stick in this state until we actually shut down
-    return getNewState(kChargeStateCriticalWait);
-}
-#endif
 
 /**
  * @brief This is the state in which the device begins shutting down.
@@ -461,22 +425,36 @@ StateCriticalWait(battery_status_t *state)
 static ChargeState
 StateShutdown(nyx_charger_event_t event)
 {
-	char default_reason[] = "Critical battery levels";
-	nyx_battery_status_t state;
-	battery_read(&state);
+    static const char kDefaultReason[] = "Critical battery levels";
+    const char *reason = gCurrentChargeState.shutdown_reason;
+    nyx_battery_status_t state;
+    char *report;
 
-    char *report = g_strdup_printf(
+    battery_read(&state);
+
+    report = g_strdup_printf(
             "Shutting down with battery"
             "(P: %d%%, T: %d C, C: %d mA, V: %d mV)",
             state.percentage, state.temperature,
             state.current, state.voltage);
 
-    write_console(report);
+    /* report is data, not a format string */
+    write_console("%s", report);
 
-    if(!gCurrentChargeState.shutdown_reason && !strlen(gCurrentChargeState.shutdown_reason))
-    	gCurrentChargeState.shutdown_reason = default_reason;
+    /*
+     * This read "if (!reason && !strlen(reason))", which can only ever call
+     * strlen on a NULL pointer, and which short-circuits to false for every
+     * non-NULL reason - including the empty string ChargeStateReset() sets.
+     * So the default was never applied and the device shut down with an empty
+     * reason. The default is also static now: it used to be a local array whose
+     * address was stored in a global that outlives this frame.
+     */
+    if (!reason || !*reason)
+        reason = kDefaultReason;
 
-    MachineShutdown(gCurrentChargeState.shutdown_reason);
+    gCurrentChargeState.shutdown_reason = reason;
+
+    MachineShutdown(reason);
 
     g_free(report);
 
@@ -573,6 +551,37 @@ StateFault(nyx_charger_event_t event)
 /* Public */
 
 /**
+* @brief Re-check the battery against the critical thresholds.
+*
+* Called when nyx reports new readings. ChargingLogicUpdate() runs off charger
+* events - a plug, an unplug, a charge-complete - and a device sitting on
+* battery generates none of those, so without this the percentage floor below
+* would only ever be evaluated on a device that was being plugged in and out.
+*
+* Deliberately not ChargingLogicUpdate(): that re-runs the whole charge
+* decision, and calling TurnChargingON() on every reading would mean a nyx
+* enable-charging round trip every few seconds.
+*/
+void
+BatteryLevelCheck(void)
+{
+    nyx_battery_status_t state;
+    bool have_state;
+
+    if (gChargeConfig.skip_battery_check)
+    {
+        return;
+    }
+
+    have_state = battery_read(&state);
+
+    if (CheckCriticalLevels(&state, have_state))
+    {
+        ChargeStateIterate(NYX_NO_NEW_EVENT);
+    }
+}
+
+/**
 * @brief Called with every change in battery state & charger state.
 *
 * @param  state
@@ -581,14 +590,11 @@ void
 ChargingLogicUpdate(nyx_charger_event_t event)
 {
     nyx_battery_status_t state;
+    bool have_state;
 
     if (gChargeConfig.skip_battery_check) {
         return;
     }
-
-
-    battery_read(&state);
-
 
     if (gChargeConfig.disable_charging)
     {
@@ -599,15 +605,30 @@ ChargingLogicUpdate(nyx_charger_event_t event)
 
     ChargeStateIterate(event);
 
-    if (CheckCriticalLevels(&state))
+    /*
+     * This read used to be taken at the top of the function and never looked
+     * at, because CheckCriticalLevels ignored the struct it was handed. It is
+     * taken here, after the state machine has run, and it is now used.
+     */
+    have_state = battery_read(&state);
+
+    if (CheckCriticalLevels(&state, have_state))
     {
         ChargeStateIterate(event);
     }
 }
 
-static int
-_battery_check_reason_helper(int batterycheck)
+/*
+ * A GSourceFunc, so that g_idle_add() is handed a function of the type it
+ * actually calls. This was an int(int) cast to GSourceFunc, with the reason
+ * cast straight from int to gpointer - two diagnostics and, on any ABI where
+ * the two disagree, a wrong answer.
+ */
+static gboolean
+_battery_check_reason_helper(gpointer data)
 {
+    int batterycheck = GPOINTER_TO_INT(data);
+
     switch (batterycheck)
     {
     case BATTERYCHECK_CRITICAL_LOW_BATTERY:
@@ -622,14 +643,14 @@ _battery_check_reason_helper(int batterycheck)
     default:
         break;
     }
-     return 0;
+
+    return G_SOURCE_REMOVE;
 }
 
 void
 BatteryCheckReason(int batterycheck)
 {
-    g_idle_add((GSourceFunc)_battery_check_reason_helper,
-    (gpointer)batterycheck);
+    g_idle_add(_battery_check_reason_helper, GINT_TO_POINTER(batterycheck));
 }
 
 /**
@@ -639,18 +660,16 @@ BatteryCheckReason(int batterycheck)
 void
 ChargingLogicResetError(void)
 {
-    nyx_battery_status_t state;
     BATTERYDLOG(LOG_CRIT, "Modem was reset... restarting charge state.");
 
     ChargeStateInit();
-    battery_read(&state);
     ChargingLogicUpdate(NYX_NO_NEW_EVENT);
 }
 
 /**
  * @brief Return the maximum battery temperature over which the device is shut down.
  */
-int batterycheck_maxtemp()
+int batterycheck_maxtemp(void)
 {
     if (gChargeConfig.maxtemp)
       return gChargeConfig.maxtemp;
@@ -699,7 +718,8 @@ void handle_charger_event(nyx_charger_event_t event)
 	}
 	if(event & NYX_BATTERY_TEMPERATURE_LIMIT) {
 		nyx_battery_status_t batt;
-		battery_read(&batt);
+		if(!battery_read(&batt))
+			return;
 		if(BatteryTemperatureCriticalShutdown(&batt))
 			_JumpToShutdownState("battery temperature above max allowed");
 		else if(BatteryTemperatureHigh(&batt) || BatteryTemperatureLow(&batt))
