@@ -207,6 +207,37 @@ static int getUiPercent(int percent)
 
 
 /**
+ * @brief The driver's verdict on a battery, as a word rather than a number.
+ *
+ * nyx reports nyx_battery_health_t, which is the kernel's POWER_SUPPLY_HEALTH_*
+ * set. Publishing the integer would make every consumer carry a copy of the
+ * enum and go stale the moment the kernel gains a value, so send the word.
+ * "unknown" covers both a driver with no opinion and one with an opinion
+ * nothing here recognises - either way, nothing is known.
+ */
+static const char *healthName(int32_t health)
+{
+    switch (health)
+    {
+        case NYX_BATTERY_HEALTH_GOOD:                   return "good";
+        case NYX_BATTERY_HEALTH_OVERHEAT:               return "overheat";
+        case NYX_BATTERY_HEALTH_DEAD:                   return "dead";
+        case NYX_BATTERY_HEALTH_OVERVOLTAGE:            return "overvoltage";
+        case NYX_BATTERY_HEALTH_UNSPEC_FAILURE:         return "failure";
+        case NYX_BATTERY_HEALTH_COLD:                   return "cold";
+        case NYX_BATTERY_HEALTH_WATCHDOG_TIMER_EXPIRE:  return "watchdog";
+        case NYX_BATTERY_HEALTH_SAFETY_TIMER_EXPIRE:    return "safetytimer";
+        case NYX_BATTERY_HEALTH_OVERCURRENT:            return "overcurrent";
+        case NYX_BATTERY_HEALTH_CALIBRATION_REQUIRED:   return "calibrate";
+        case NYX_BATTERY_HEALTH_WARM:                   return "warm";
+        case NYX_BATTERY_HEALTH_COOL:                   return "cool";
+        case NYX_BATTERY_HEALTH_HOT:                    return "hot";
+        case NYX_BATTERY_HEALTH_NO_BATTERY:             return "nobattery";
+        default:                                        return "unknown";
+    }
+}
+
+/**
  * @brief Append the readings of one battery as a JSON object.
  */
 static void appendBatteryObject(GString *buffer, const char *name,
@@ -218,7 +249,9 @@ static void appendBatteryObject(GString *buffer, const char *name,
         "\"present\":%s,\"charging\":%s,"
         "\"percent\":%d,\"percent_ui\":%d,"
         "\"temperature_C\":%d,\"current_mA\":%d,\"voltage_mV\":%d,"
-        "\"capacity_mAh\":%f}",
+        "\"capacity_mAh\":%f,"
+        "\"capacity_full_mAh\":%f,\"capacity_design_mAh\":%f,"
+        "\"health\":\"%s\"}",
         name, role,
         primary ? "true" : "false",
         status->present ? "true" : "false",
@@ -228,7 +261,10 @@ static void appendBatteryObject(GString *buffer, const char *name,
         status->temperature,
         status->current,
         status->voltage,
-        status->capacity);
+        status->capacity,
+        status->capacity_full40,
+        status->capacity_full_design,
+        healthName(status->health));
 }
 
 /**
@@ -272,15 +308,29 @@ static char *buildBatteryStatusPayload(void)
             status.current, status.voltage);
 
     buffer = g_string_sized_new(500);
+    /*
+     * capacity_mAh is what is in the pack now; capacity_full_mAh is what the
+     * gauge believes it holds when full and capacity_design_mAh what it held
+     * when new, and it takes both of those to say anything about wear. Either
+     * is -1 where the driver does not report it, and the two being equal
+     * means a gauge that does no capacity learning rather than a pack in
+     * perfect condition - a caller showing a percentage should tell those
+     * apart. health is the driver's own verdict and a separate question.
+     */
     g_string_append_printf(buffer,"{\"percent\":%d,\"percent_ui\":%d,"
                 "\"temperature_C\":%d,\"current_mA\":%d,\"voltage_mV\":%d,"
-                "\"capacity_mAh\":%f",
+                "\"capacity_mAh\":%f,"
+                "\"capacity_full_mAh\":%f,\"capacity_design_mAh\":%f,"
+                "\"health\":\"%s\"",
         status.percentage,
         percent_ui,
         status.temperature,
         status.current,
         status.voltage,
-        status.capacity);
+        status.capacity,
+        status.capacity_full40,
+        status.capacity_full_design,
+        healthName(status.health));
 
     /* NYX_ERROR_NOT_IMPLEMENTED here just means "one battery, the one above". */
     if (nyx_battery_query_battery_count(battDev, &count) == NYX_ERROR_NONE &&
