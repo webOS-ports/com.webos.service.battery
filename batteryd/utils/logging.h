@@ -20,6 +20,13 @@
 #ifndef __LOGGING_H__
 #define __LOGGING_H__
 #include <sys/syslog.h>
+/*
+ * For G_GNUC_PRINTF on write_console() below, and for g_log() in
+ * BATTERYDLOG. timesaver.c.in and charging_logic.c include this header
+ * before they include main.h, which is what pulls in glib elsewhere, so
+ * leaving it out here is a build failure rather than a style point.
+ */
+#include <glib.h>
 
 typedef enum {
     LOGSyslog = 0,
