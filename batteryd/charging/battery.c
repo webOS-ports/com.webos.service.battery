@@ -39,6 +39,7 @@
 #include "charging_logic.h"
 #include "batteryd_config.h"
 #include "sysfs.h"
+#include "charger.h"
 
 #define LOG_DOMAIN "BATTERY_IPC: "
 
@@ -415,6 +416,10 @@ void notifyBatteryStatus(nyx_device_handle_t handle, nyx_callback_status_t statu
     /* new readings are the only chance a discharging device gets to notice
      * that it has run out */
     BatteryLevelCheck();
+
+    /* A charger change shows up in the battery's readings within a few
+     * samples even when nyx's charger callback did not come. */
+    ChargerResync("battery status changed");
 }
 
 bool batteryStatusQuerySignal(LSHandle *sh,
