@@ -40,14 +40,30 @@
 #include "batterypoll.h"
 #include "charging_logic.h"
 #include "batteryd_config.h"
+#include "charger_eval.h"
 
 #define LOG_DOMAIN "CHG: "
 
 #include <nyx/nyx_client.h>
 
+/* How often to look at the charger even though nyx has said nothing. */
+#define CHARGER_RESYNC_SECONDS 30
 
 static nyx_device_handle_t nyxDev = NULL;
-nyx_charger_status_t currStatus;
+
+/* What nyx said the last time anyone read it: answers ChargerIs*(). */
+static nyx_charger_status_t currStatus;
+
+/*
+ * What the bus was last told. Broadcast decisions compare against this and
+ * only this, so a read that did not end in a broadcast (a chargerStatusQuery
+ * reply, a periodic check that found nothing new) cannot make a later real
+ * change look like "no change".
+ */
+static charger_view_t lastBroadcast;
+static bool lastBroadcastValid = false;
+
+static bool ChargerBroadcast(const nyx_charger_status_t *status, bool force);
 
 const char *
 ChargerNameToString(int type)
@@ -79,7 +95,52 @@ ChargerTypeToString(int type)
 
 bool ChargerIsConnected(void)
 {
-    return (currStatus.connected != 0);
+    charger_view_t v = charger_view(&currStatus);
+    return v.any;
+}
+
+/*
+ * Read the charger from nyx into *status and remember it. Returns false when
+ * nyx could not answer, leaving *status zeroed.
+ */
+static bool
+ChargerRead(nyx_charger_status_t *status, const char *why)
+{
+    nyx_error_t err;
+
+    memset(status, 0, sizeof(*status));
+
+    if (!nyxDev)
+        return false;
+
+    err = nyx_charger_query_charger_status(nyxDev, status);
+
+    if (err != NYX_ERROR_NONE)
+    {
+        BATTERYDLOG(LOG_ERR,"%s (%s): nyx_charger_query_charger_status returned with error : %d",
+                    __func__, why, err);
+        memset(status, 0, sizeof(*status));
+        return false;
+    }
+
+    memcpy(&currStatus, status, sizeof(currStatus));
+    return true;
+}
+
+static char *
+ChargerDockStatusPayload(const nyx_charger_status_t *status,
+                         const charger_view_t *v, bool with_connected)
+{
+    return g_strdup_printf("{\"DockConnected\":%s,\"DockPower\":%s,\"DockSerialNo\":\"%s\","
+                "\"USBConnected\":%s,\"USBName\":\"%s\",\"Charging\":%s%s%s}",
+                v->dock ? "true" : "false",
+                (status->powered & NYX_CHARGER_INDUCTIVE_POWERED) ? "true" :"false",
+                (strlen(status->dock_serial_number)) ? status->dock_serial_number : "NULL",
+                v->wired ? "true" : "false",
+                ChargerNameToString(status->connected),
+                v->charging ? "true":"false",
+                with_connected ? ",\"connected\":" : "",
+                with_connected ? (v->any ? "true" : "false") : "");
 }
 
 bool ChargerIsCharging(void)
@@ -92,135 +153,173 @@ chargerStatusQuery(LSHandle *sh,
                    LSMessage *message, void *user_data)
 {
     nyx_charger_status_t status;
-    if(!nyxDev)
-        return false;
-    nyx_error_t err = nyx_charger_query_charger_status(nyxDev,&status);
+    charger_view_t v;
 
-    if(err != NYX_ERROR_NONE)
+    if (!ChargerRead(&status, "query"))
     {
-        BATTERYDLOG(LOG_ERR,"%s: nyx_charger_query_charger_status returned with error : %d",__func__,err);
         /* status is untouched stack; answering out of it reports garbage. */
         return false;
     }
 
+    v = charger_view(&status);
+
     LSError lserror;
     LSErrorInit(&lserror);
 
-    char *payload = g_strdup_printf("{\"DockConnected\":%s,\"DockPower\":%s,\"DockSerialNo\":\"%s\","
-                "\"USBConnected\":%s,\"USBName\":\"%s\",\"Charging\":%s,\"connected\":%s}",(status.connected & NYX_CHARGER_INDUCTIVE_CONNECTED) ? "true" : "false",
-                (status.powered & NYX_CHARGER_INDUCTIVE_POWERED) ? "true" :"false",(strlen(status.dock_serial_number)) ? status.dock_serial_number : "NULL",
-                (status.powered & NYX_CHARGER_USB_POWERED) ? "true" : "false",ChargerNameToString(status.connected),
-                (status.is_charging) ? "true":"false",
-                (status.connected) ? "true":"false");
+    char *payload = ChargerDockStatusPayload(&status, &v, true);
 
     BATTERYDLOG(LOG_DEBUG,"%s: Sending payload : %s",__func__,payload);
-    bool retVal = LSMessageReply(sh, message, payload,NULL);
+    bool retVal = LSMessageReply(sh, message, payload, &lserror);
     if (!retVal)
     {
-
         LSErrorPrint(&lserror, stderr);
         LSErrorFree(&lserror);
     }
     g_free(payload);
+
+    /*
+     * The client now knows something the bus may not: if this read differs
+     * from what was last broadcast, nyx's callback did not come (or has not
+     * come yet). Say it to everyone, not just the one who asked.
+     */
+    ChargerBroadcast(&status, false);
+
     return TRUE;
+}
+
+/*
+ * Broadcast status if it differs from what was last broadcast, or always
+ * when force. Returns true when something was sent.
+ */
+static bool
+ChargerBroadcast(const nyx_charger_status_t *status, bool force)
+{
+    charger_view_t v = charger_view(status);
+    bool changed = !lastBroadcastValid || charger_view_differs(&lastBroadcast, &v);
+    bool ok = true;
+
+    g_debug("%s: wired=%d dock=%d any=%d charging=%d (last: valid=%d wired=%d dock=%d any=%d charging=%d)%s",
+            __func__, v.wired, v.dock, v.any, v.charging,
+            lastBroadcastValid, lastBroadcast.wired, lastBroadcast.dock,
+            lastBroadcast.any, lastBroadcast.charging, force ? " forced" : "");
+
+    if (!force && !changed)
+        return false;
+
+    LSError lserror;
+    LSErrorInit(&lserror);
+
+    char *payload = ChargerDockStatusPayload(status, &v, false);
+
+    BATTERYDLOG(LOG_DEBUG,"%s: Sending payload : %s",__func__,payload);
+
+    if (!LSSignalSend(GetLunaServiceHandle(),
+            "luna://com.webos.service.battery/com/palm/power/USBDockStatus",
+            payload, &lserror))
+    {
+        LSErrorPrint(&lserror, stderr);
+        LSErrorFree(&lserror);
+        ok = false;
+    }
+    g_free(payload);
+
+    payload = g_strdup_printf("{\"type\":\"%s\",\"name\":\"%s\",\"connected\":%s,\"current_mA\":%d,\"message_source\":\"batteryd\"}",
+            charger_view_type(&v),
+            ChargerNameToString(status->connected),
+            v.any ? "true" : "false",
+            status->charger_max_current);
+    BATTERYDLOG(LOG_DEBUG,"%s: Sending payload : %s",__func__,payload);
+
+    if (!LSSignalSend(GetLunaServiceHandle(),
+            "luna://com.webos.service.battery/com/palm/power/chargerStatus",
+            payload, &lserror))
+    {
+        LSErrorPrint(&lserror, stderr);
+        LSErrorFree(&lserror);
+        ok = false;
+    }
+    g_free(payload);
+
+    if (force || !lastBroadcastValid || lastBroadcast.any != v.any)
+    {
+        payload = g_strdup_printf("{\"connected\":%s}", v.any ? "true" : "false");
+
+        BATTERYDLOG(LOG_DEBUG,"%s: Sending payload : %s",__func__,payload);
+
+        if (!LSSignalSend(GetLunaServiceHandle(),
+                "luna://com.webos.service.battery/com/palm/power/chargerConnected",
+                payload, &lserror))
+        {
+            LSErrorPrint(&lserror, stderr);
+            LSErrorFree(&lserror);
+            ok = false;
+        }
+
+        /* sleepd subscribes to chargerConnected in the root category ("/"),
+         * not /com/palm/power, so also emit it there; otherwise sleepd never
+         * sees charger plug/unplug and suspend-thrashes while charging. */
+        if (!LSSignalSend(GetLunaServiceHandle(),
+                "luna://com.webos.service.battery/chargerConnected",
+                payload, &lserror))
+        {
+            LSErrorPrint(&lserror, stderr);
+            LSErrorFree(&lserror);
+            ok = false;
+        }
+        g_free(payload);
+    }
+
+    /* A send that failed is retried by the next resync: leave the record. */
+    if (ok)
+    {
+        lastBroadcast = v;
+        lastBroadcastValid = true;
+    }
+
+    // Iterate through both charging as well as battery state machines. Is this required ??
+//    ChargingLogicUpdate(NYX_NO_NEW_EVENT);
+
+    return true;
 }
 
 void sendChargerStatus(bool bOnlyIfChanged)
 {
     nyx_charger_status_t status;
-    if(!nyxDev)
+
+    if (!ChargerRead(&status, bOnlyIfChanged ? "notify" : "signal"))
         return;
-    nyx_error_t err = nyx_charger_query_charger_status(nyxDev,&status);
-    if(err != NYX_ERROR_NONE)
-    {
-        BATTERYDLOG(LOG_ERR,"%s: nyx_charger_query_charger_status returned with error : %d",__func__,err);
-        /*
-         * Carrying on used to broadcast an untouched stack struct and then
-         * memcpy it into currStatus, from where ChargerIsConnected() and
-         * ChargerIsCharging() answer for the rest of the process's life.
-         */
+
+    ChargerBroadcast(&status, !bOnlyIfChanged);
+}
+
+/*
+ * Look at the charger now, without being told to by nyx, and broadcast if it
+ * differs from what the bus was last told.
+ *
+ * nyx's status callback is driven by power_supply uevents, and on some
+ * kernels the supply nyx reads is not one that emits them (sargo's pc_port),
+ * so an edge can go unannounced. This runs every CHARGER_RESYNC_SECONDS and
+ * whenever nyx reports a battery change, which a charger change tends to
+ * cause within a few readings.
+ */
+void ChargerResync(const char *why)
+{
+    nyx_charger_status_t status;
+
+    if (!ChargerRead(&status, why))
         return;
-    }
-    g_debug("sendChargerStatus: connected=%d->%d, powered=%d->%d",currStatus.connected,status.connected,currStatus.powered,status.powered);
 
-    if(!bOnlyIfChanged || 
-       (currStatus.connected != status.connected || currStatus.powered != status.powered))
+    if (ChargerBroadcast(&status, false))
     {
-        LSError lserror;
-        LSErrorInit(&lserror);
-        char *payload = g_strdup_printf("{\"DockConnected\":%s,\"DockPower\":%s,\"DockSerialNo\":\"%s\","
-            "\"USBConnected\":%s,\"USBName\":\"%s\",\"Charging\":%s}",(status.connected & NYX_CHARGER_INDUCTIVE_CONNECTED) ? "true" : "false",
-                    (status.powered & NYX_CHARGER_INDUCTIVE_POWERED) ? "true" :"false",(strlen(status.dock_serial_number)) ? status.dock_serial_number : "NULL",
-                    (status.powered & NYX_CHARGER_USB_POWERED) ? "true" : "false",ChargerNameToString(status.connected),
-                    (status.is_charging) ? "true":"false");
-
-        BATTERYDLOG(LOG_DEBUG,"%s: Sending payload : %s",__func__,payload);
-
-        bool retVal = LSSignalSend(GetLunaServiceHandle(),
-            "luna://com.webos.service.battery/com/palm/power/USBDockStatus",
-            payload, &lserror);
-        if (!retVal)
-        {
-            LSErrorPrint(&lserror, stderr);
-            LSErrorFree(&lserror);
-            g_free(payload);
-            return;
-        }
-        g_free(payload);
-
-        payload = g_strdup_printf("{\"type\":\"%s\",\"name\":\"%s\",\"connected\":%s,\"current_mA\":%d,\"message_source\":\"batteryd\"}",
-                ChargerTypeToString(status.powered),
-                ChargerNameToString(status.connected),
-                status.connected ? "true" : "false",
-                status.charger_max_current);
-        BATTERYDLOG(LOG_DEBUG,"%s: Sending payload : %s",__func__,payload);
-
-        retVal = LSSignalSend(GetLunaServiceHandle(),
-                "luna://com.webos.service.battery/com/palm/power/chargerStatus",
-                payload, &lserror);
-        if (!retVal)
-        {
-
-            LSErrorPrint(&lserror, stderr);
-            LSErrorFree(&lserror);
-        }
-        g_free(payload);
+        BATTERYDLOG(LOG_INFO, "charger state changed without a nyx notification (%s)", why);
     }
-    if(!bOnlyIfChanged ||
-       currStatus.connected != status.connected)
-    {
-        char *payload = g_strdup_printf("{\"connected\":%s}",
-                status.connected ? "true" : "false");
+}
 
-        LSError lserror;
-        LSErrorInit(&lserror);
-        BATTERYDLOG(LOG_DEBUG,"%s: Sending payload : %s",__func__,payload);
-
-        bool retVal = LSSignalSend(GetLunaServiceHandle(),
-                "luna://com.webos.service.battery/com/palm/power/chargerConnected",
-                payload, &lserror);
-        /* sleepd subscribes to chargerConnected in the root category ("/"),
-         * not /com/palm/power, so also emit it there; otherwise sleepd never
-         * sees charger plug/unplug and suspend-thrashes while charging. */
-        LSError lserror_root; LSErrorInit(&lserror_root);
-        if (!LSSignalSend(GetLunaServiceHandle(),
-                "luna://com.webos.service.battery/chargerConnected",
-                payload, &lserror_root)) { LSErrorPrint(&lserror_root, stderr); LSErrorFree(&lserror_root); }
-        g_free(payload);
-
-        if (!retVal)
-        {
-            LSErrorPrint(&lserror, stderr);
-            LSErrorFree(&lserror);
-        }
-    }
-
-    memcpy(&currStatus,&status,sizeof(nyx_charger_status_t));
-
-    // Iterate through both charging as well as battery state machines. Is this required ??
-//    ChargingLogicUpdate(NYX_NO_NEW_EVENT);
-
-    return;
+static gboolean
+ChargerResyncTimer(gpointer data)
+{
+    ChargerResync("periodic");
+    return G_SOURCE_CONTINUE;
 }
 
 void notifyChargerStatus(nyx_device_handle_t handle, nyx_callback_status_t status, void* data)
@@ -262,7 +361,7 @@ chargerEnableCharging(int *max_charging_current)
         return false;
     }
 
-    /* nyx just filled in status; currStatus is whatever the last broadcast saw. */
+    /* nyx just filled in status; currStatus is whatever the last read saw. */
     if (max_charging_current)
         *max_charging_current = status.charger_max_current;
     battery_set_wakeup_percentage(true,false);
@@ -330,6 +429,7 @@ int ChargerInit(void)
     }
 
     memset(&currStatus,0,sizeof(nyx_charger_status_t));
+    lastBroadcastValid = false;
 
     LSError lserror;
     LSErrorInit(&lserror);
@@ -347,6 +447,8 @@ int ChargerInit(void)
 
     if (!gChargeConfig.skip_battery_check && !gChargeConfig.disable_charging)
         nyx_charger_register_state_change_callback(nyxDev,notifyStateChange,NULL);
+
+    g_timeout_add_seconds(CHARGER_RESYNC_SECONDS, ChargerResyncTimer, NULL);
 
 out:
     if(iterator)

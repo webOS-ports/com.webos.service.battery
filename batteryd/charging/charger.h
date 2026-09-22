@@ -37,4 +37,10 @@ bool ChargerIsConnected(void);
 bool ChargerIsCharging(void);
 void getNewEvent(void);
 
+/**
+ * Re-read the charger and broadcast if it differs from what was last
+ * broadcast. Safe to call from anywhere on the main loop.
+ */
+void ChargerResync(const char *why);
+
 #endif // _CHARGER_H_

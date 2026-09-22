@@ -56,4 +56,7 @@ include_directories(include/internal include/public/batteryd)
 add_subdirectory(libbatteryd)
 add_subdirectory(batteryd)
 
+webos_test_provider(GLIB_TEST)
+add_subdirectory(tests)
+
 webos_build_system_bus_files()

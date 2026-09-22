@@ -7,7 +7,13 @@ Description=Daemon to manage charging and battery monitoring
 # placeholder - on sargo that meant the charger sysfs path fell back to nyx's
 # own walk, which picks the wrong supply, and USB charging was never detected.
 After=activitymanager.service nyx.target
-Requires=activitymanager.service
+# Wants, not Requires: with Requires, every stop of activitymanager (a package
+# upgrade restarts it) stopped batteryd as well, and Restart=on-failure does
+# not bring back a unit that was stopped cleanly. Seen on sargo and tissot on
+# 2026-09-19: batteryd gone for hours, so no charger edge reached the display
+# manager (screen stayed on after unplug under onWhenConnected) or sleepd.
+# batteryd does not call activitymanager; the ordering is all it needs.
+Wants=activitymanager.service
 
 [Service]
 Type=simple
