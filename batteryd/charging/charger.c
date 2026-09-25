@@ -330,6 +330,7 @@ void notifyChargerStatus(nyx_device_handle_t handle, nyx_callback_status_t statu
 void notifyStateChange(nyx_device_handle_t handle, nyx_callback_status_t status, void* data)
 {
     nyx_charger_event_t new_event;
+    nyx_charger_status_t status_now;
 
     nyx_error_t err = nyx_charger_query_charger_event(nyxDev,&new_event);
     if(err != NYX_ERROR_NONE)
@@ -338,6 +339,20 @@ void notifyStateChange(nyx_device_handle_t handle, nyx_callback_status_t status,
         /* new_event is untouched stack, and it drives the state machine. */
         return;
     }
+
+    /*
+     * Read the charger before acting on the edge. The state machine asks
+     * ChargerIsConnected() what is plugged in, and that answers from currStatus,
+     * which only a read updates - so without this the machine can be driven by a
+     * CONNECTED edge while still being told nothing is connected, and the two
+     * charge states then hand back to each other. ChargeStateIterate() no longer
+     * spins when they do, but it would still mean charging decisions taken
+     * against a charger view older than the event that prompted them.
+     *
+     * A read that fails leaves currStatus alone and says so; carry on either
+     * way, because the event still has to be handled.
+     */
+    (void) ChargerRead(&status_now, "state change");
 
     handle_charger_event(new_event);
 }
