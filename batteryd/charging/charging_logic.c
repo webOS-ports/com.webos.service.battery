@@ -262,6 +262,7 @@ ChargeStateIterate(nyx_charger_event_t event)
 {
     ChargeState next_state;
     nyx_battery_status_t state;
+    unsigned int entered = 0;
 
     battery_read(&state);
     /*
@@ -271,14 +272,60 @@ ChargeStateIterate(nyx_charger_event_t event)
     */
 
     do {
+        if (gCurrentChargeState.current_state < kChargeStateLast)
+        {
+            entered |= 1u << gCurrentChargeState.current_state;
+        }
+
         next_state = gCurrentChargeState.state_node.function(event);
 
         ChargeStateTransitionLog(&state);
+
+        /*
+         * The event is an edge - a charger just plugged in, a charge just
+         * completed - and it is consumed by the first handler that sees it. It
+         * used to be handed unchanged to every handler this loop ran, and being
+         * a by-value parameter nothing could clear it. That is half of how this
+         * loop could fail to terminate:
+         *
+         *   StateIdle() sees NYX_CHARGER_CONNECTED, returns kChargeStateCharging.
+         *   StateCharging() finds !ChargerIsConnected() - currStatus holds
+         *   whatever the last read saw, and on a charger whose supply emits no
+         *   uevent of its own that can still say nothing is connected - and
+         *   returns kChargeStateIdle.
+         *   StateIdle() sees the same CONNECTED bit again, and so on.
+         *
+         * Neither the event nor the state those two disagree about can change
+         * while this loop holds the main loop. Measured on a Pixel 3a (sargo),
+         * 2026-09-25: 516 seconds of CPU in the 519 since the charger was
+         * plugged in, one core pinned, no charger or battery broadcast since the
+         * edge arrived, and nothing in the journal to show for it because the
+         * per-iteration log is formatted and then dropped. The resync timer that
+         * exists to correct stale charger state cannot help - it is a timeout on
+         * the main loop this loop is blocking.
+         */
+        event = NYX_NO_NEW_EVENT;
 
         if (kChargeStateLast != next_state)
         {
             gCurrentChargeState.current_state = next_state;
             gCurrentChargeState.state_node = kStateMachine[next_state];
+
+            /*
+             * Clearing the event is enough for the case above, since StateIdle()
+             * with no event returns kChargeStateLast. This is the other half: two
+             * states that hand back to each other on level state alone would
+             * still spin. A pass that re-enters a state it has already run is
+             * not making progress, so stop - the transition has been applied, so
+             * the next event runs that handler again - and say so once.
+             */
+            if (next_state < kChargeStateLast && (entered & (1u << next_state)))
+            {
+                BATTERYDLOG(LOG_ERR,
+                    "%s: %s re-entered in one pass, stopping to avoid spinning",
+                    __FUNCTION__, debug_state_description[next_state]);
+                break;
+            }
         }
     } while (kChargeStateLast != next_state);
 }
