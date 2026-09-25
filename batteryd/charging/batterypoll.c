@@ -217,11 +217,32 @@ static void battery_state_log(void)
 void battery_state_iterate(void)
 {
     BatteryState next_state;
+    unsigned int entered = 0;
+
     do {
+        if (state_node.state < kBatteryLast) {
+            entered |= 1u << state_node.state;
+        }
+
         battery_state_log();
         next_state = state_node.function();
         if (kBatteryLast != next_state) {
             state_node = kStateMachine[next_state];
+
+            /*
+             * Same guard as ChargeStateIterate(), for the same reason. These
+             * handlers take no event at all, so a pair that hands back to each
+             * other on the readings alone - inserted -> debounce -> inserted,
+             * say - spins here for ever with the main loop blocked, and the
+             * per-iteration log makes it look busy rather than stuck. A pass
+             * that re-enters a state it has already run is not making progress.
+             */
+            if (next_state < kBatteryLast && (entered & (1u << next_state))) {
+                BATTERYDLOG(LOG_ERR,
+                    "%s: %s re-entered in one pass, stopping to avoid spinning",
+                    __FUNCTION__, debug_battery_state[next_state]);
+                break;
+            }
         }
     } while (kBatteryLast != next_state);
 }
