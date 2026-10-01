@@ -249,7 +249,8 @@ static void appendBatteryObject(GString *buffer, const char *name,
         "{\"name\":\"%s\",\"role\":\"%s\",\"primary\":%s,"
         "\"present\":%s,\"charging\":%s,"
         "\"percent\":%d,\"percent_ui\":%d,"
-        "\"temperature_C\":%d,\"current_mA\":%d,\"voltage_mV\":%d,"
+        "\"temperature_C\":%d,\"current_mA\":%d,"
+        "\"avg_current_mA\":%d,\"voltage_mV\":%d,"
         "\"capacity_mAh\":%f,"
         "\"capacity_full_mAh\":%f,\"capacity_design_mAh\":%f,"
         "\"health\":\"%s\"}",
@@ -261,6 +262,7 @@ static void appendBatteryObject(GString *buffer, const char *name,
         getUiPercent(status->percentage),
         status->temperature,
         status->current,
+        status->avg_current,
         status->voltage,
         status->capacity,
         status->capacity_full40,
@@ -317,9 +319,19 @@ static char *buildBatteryStatusPayload(void)
      * means a gauge that does no capacity learning rather than a pack in
      * perfect condition - a caller showing a percentage should tell those
      * apart. health is the driver's own verdict and a separate question.
+     *
+     * current_mA is the instantaneous reading and avg_current_mA the averaged
+     * one, and they are both published because neither is reliably the better
+     * answer. Where a driver exports only current_now the two are the same
+     * figure. Where it exports current_avg as well, some gauges carry the
+     * reading on one and not the other - the MindPhone's MT6739 pins
+     * current_now to a permanent zero while current_avg follows the charge -
+     * so a caller that wants a number to show should prefer whichever of the
+     * two is non-zero rather than trusting one of them outright.
      */
     g_string_append_printf(buffer,"{\"percent\":%d,\"percent_ui\":%d,"
-                "\"temperature_C\":%d,\"current_mA\":%d,\"voltage_mV\":%d,"
+                "\"temperature_C\":%d,\"current_mA\":%d,"
+                "\"avg_current_mA\":%d,\"voltage_mV\":%d,"
                 "\"capacity_mAh\":%f,"
                 "\"capacity_full_mAh\":%f,\"capacity_design_mAh\":%f,"
                 "\"health\":\"%s\"",
@@ -327,6 +339,7 @@ static char *buildBatteryStatusPayload(void)
         percent_ui,
         status.temperature,
         status.current,
+        status.avg_current,
         status.voltage,
         status.capacity,
         status.capacity_full40,
