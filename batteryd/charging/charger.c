@@ -63,6 +63,44 @@ static nyx_charger_status_t currStatus;
 static charger_view_t lastBroadcast;
 static bool lastBroadcastValid = false;
 
+/*
+ * The battery is full, so whatever is plugged in is no longer charging it.
+ *
+ * nyx's is_charging means "a supply is online", and that is also what tells sleepd and the display
+ * manager that a charger was plugged in or pulled out, so it stays as it is. Only the "Charging" this
+ * service reports is cleared: the shell shows its charging icon from it, and a battery at 100% that
+ * takes no current went on showing as charging for as long as the cable was in. Samsung's sec_battery
+ * never reports "Full" on a USB cable (it calls a full battery "Discharging"), so the decision is made
+ * from the readings: 100%, and no more than BATTERY_FULL_MAX_MA going in.
+ */
+#define BATTERY_FULL_MAX_MA 50
+static bool batteryFull = false;
+
+static charger_view_t
+ChargerView(const nyx_charger_status_t *status)
+{
+    charger_view_t v = ChargerView(status);
+
+    if (batteryFull)
+        v.charging = false;
+
+    return v;
+}
+
+void ChargerNoteBattery(const nyx_battery_status_t *battery)
+{
+    bool full = battery->present && battery->percentage >= 100 &&
+                battery->current <= BATTERY_FULL_MAX_MA &&
+                battery->avg_current <= BATTERY_FULL_MAX_MA;
+
+    if (full == batteryFull)
+        return;
+
+    batteryFull = full;
+    BATTERYDLOG(LOG_INFO, "battery %s", full ? "full: a connected charger is no longer reported as charging"
+                                             : "no longer full");
+}
+
 static bool ChargerBroadcast(const nyx_charger_status_t *status, bool force);
 
 const char *
@@ -95,7 +133,7 @@ ChargerTypeToString(int type)
 
 bool ChargerIsConnected(void)
 {
-    charger_view_t v = charger_view(&currStatus);
+    charger_view_t v = ChargerView(&currStatus);
     return v.any;
 }
 
@@ -161,7 +199,7 @@ chargerStatusQuery(LSHandle *sh,
         return false;
     }
 
-    v = charger_view(&status);
+    v = ChargerView(&status);
 
     LSError lserror;
     LSErrorInit(&lserror);
@@ -194,7 +232,7 @@ chargerStatusQuery(LSHandle *sh,
 static bool
 ChargerBroadcast(const nyx_charger_status_t *status, bool force)
 {
-    charger_view_t v = charger_view(status);
+    charger_view_t v = ChargerView(status);
     bool changed = !lastBroadcastValid || charger_view_differs(&lastBroadcast, &v);
     bool ok = true;
 

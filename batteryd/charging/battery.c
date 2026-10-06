@@ -301,6 +301,8 @@ static char *buildBatteryStatusPayload(void)
         return NULL;
     }
 
+    ChargerNoteBattery(&status);
+
     int percent_ui = getUiPercent(status.percentage);
 
     BATTERYDLOG(LOG_INFO,
