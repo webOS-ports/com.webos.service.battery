@@ -18,6 +18,7 @@
 
 
 #include <stdbool.h>
+#include <nyx/nyx_client.h>
 
 #ifndef _CHARGER_H_
 #define _CHARGER_H_
@@ -42,5 +43,11 @@ void getNewEvent(void);
  * broadcast. Safe to call from anywhere on the main loop.
  */
 void ChargerResync(const char *why);
+
+/**
+ * Tell the charger side about a battery reading, so that a full battery stops being reported as
+ * charging. Only records it; the next ChargerResync() broadcasts the change.
+ */
+void ChargerNoteBattery(const nyx_battery_status_t *battery);
 
 #endif // _CHARGER_H_
