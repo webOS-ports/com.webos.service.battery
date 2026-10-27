@@ -79,7 +79,7 @@ static bool batteryFull = false;
 static charger_view_t
 ChargerView(const nyx_charger_status_t *status)
 {
-    charger_view_t v = ChargerView(status);
+    charger_view_t v = charger_view(status);
 
     if (batteryFull)
         v.charging = false;
