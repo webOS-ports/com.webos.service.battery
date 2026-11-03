@@ -36,6 +36,7 @@
 #include "logging.h"
 #include "suspend.h"
 #include "charging_logic.h"
+#include "critical_eval.h"
 #include "lunaservice_utils.h"
 #include "main.h"
 #include "sysfs.h"
@@ -389,6 +390,11 @@ void MachineShutdown(const char *reason)
  * charge one point per six seconds from a stale saved value - and one bad
  * sample should not power the device off.
  *
+ * Nor does it act while the battery voltage says the percentage is wrong
+ * (critical_eval.h): a gauge that reports 1% at 4.0 V would otherwise power the
+ * device off with most of its charge left. A really flat battery still gets
+ * here once its voltage drops, and nyx's critical voltage trigger stays.
+ *
  * @param state   latest readings, only read when state_valid
  * @param state_valid  false when battery_read() could not answer
  */
@@ -396,6 +402,7 @@ static bool
 CheckCriticalLevels(const nyx_battery_status_t *state, bool state_valid)
 {
     static int critical_samples = 0;
+    static bool implausible_logged = false;
 
     /* Skip checks for people with fake batteries or bare-boards */
     if (gChargeConfig.skip_battery_check) return false;
@@ -413,10 +420,27 @@ CheckCriticalLevels(const nyx_battery_status_t *state, bool state_valid)
         return false;
     }
 
-    if (state->percentage > gChargeConfig.critical_percent)
+    switch (critical_percent_eval(state->percentage, state->voltage,
+                                  gChargeConfig.critical_percent))
     {
+    case CRITICAL_PERCENT_NO:
         critical_samples = 0;
+        implausible_logged = false;
         return false;
+    case CRITICAL_PERCENT_IMPLAUSIBLE:
+        critical_samples = 0;
+        if (!implausible_logged)
+        {
+            BATTERYDLOG(LOG_WARNING,
+                "Battery reports %d%% at %dmV, not acting on the critical level of %d%%: the gauge is wrong",
+                state->percentage, state->voltage,
+                gChargeConfig.critical_percent);
+            implausible_logged = true;
+        }
+        return false;
+    case CRITICAL_PERCENT_YES:
+        implausible_logged = false;
+        break;
     }
 
     critical_samples++;
