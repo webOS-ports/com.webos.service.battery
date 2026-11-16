@@ -49,12 +49,13 @@
 #include "logging.h"
 
 #include "battery.h"
+#include "wakeup_reason.h"
 
 #define LOG_DOMAIN "BATTERYD-SUSPEND: "
 
 
 #define kBatteryCheckReasonSysfs "/sys/power/batterycheck_wakeup"
-#define kChargerWakeupSourcesSysfs      "/sys/power/wakeup_event_list"
+static const char *const kWakeupReasonFiles[] = WAKEUP_REASON_FILES;
 
 enum {
     kResumeTypeKernel,
@@ -101,6 +102,7 @@ _ParseWakeupSources(int resumeType)
     char batterycheck_reason[1024] = {0};
     char wakeup_sources[1024] = {0};
     gchar ** wakeup_source_list = NULL;
+    int from;
     int i;
 
     if (kResumeTypeKernel != resumeType)
@@ -125,11 +127,15 @@ _ParseWakeupSources(int resumeType)
         _ParseBatteryCheck(batterycheck_reason));
     }
 
-    retval = SysfsGetString(kChargerWakeupSourcesSysfs, wakeup_sources, sizeof(wakeup_sources));
-    if (retval || wakeup_sources[0] == '\0' )
-        snprintf(wakeup_sources, sizeof(wakeup_sources), "[ 0.0 ] MISSING () MISSING (0)");
-    else
+    from = wakeup_reason_read(kWakeupReasonFiles, G_N_ELEMENTS(kWakeupReasonFiles),
+                              wakeup_sources, sizeof(wakeup_sources));
+    if (from >= 0)
+    {
+        BATTERYDLOG(LOG_DEBUG, "Wakeup reason from %s", kWakeupReasonFiles[from]);
         wakeup_source_list = g_strsplit(wakeup_sources, "\n", 0);
+    }
+    else
+        BATTERYDLOG(LOG_DEBUG, "Wakeup Source: unknown, the kernel does not report one");
 
 
 cleanup:

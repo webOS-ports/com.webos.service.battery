@@ -6,3 +6,7 @@ webos_add_test(test_charger_eval
 webos_add_test(test_critical_eval
     SOURCES test_critical_eval.c
     LIBRARIES ${GLIB2_LDFLAGS})
+
+webos_add_test(test_wakeup_reason
+    SOURCES test_wakeup_reason.c
+    LIBRARIES ${GLIB2_LDFLAGS})
